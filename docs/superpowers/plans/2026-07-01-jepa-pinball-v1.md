@@ -458,16 +458,22 @@ def test_config_changes_geometry():
 
 
 def test_ball_stays_in_bounds_long_episode():
-    # anti-tunneling : 900 pas de jeu aléatoire, la balle reste dans le plateau
-    sim, cfg = make_sim(seed=3)
-    rng = np.random.default_rng(3)
-    for i in range(900):
-        if i % 7 == 0:
-            a = int(rng.integers(4))
-        sim.set_flippers(bool(a & 1), bool(a >> 1))
-        sim.step_control()
-        x, y = sim.ball_pos
-        assert -5 <= x <= cfg.width + 5 and y <= cfg.height + 5
+    # anti-tunneling : la balle ne traverse JAMAIS un mur. La sortie par le
+    # bas (drain, ouvert par conception — c'est l'env qui la détecte) est une
+    # fin légitime : on passe alors à la seed suivante.
+    for seed in range(5):
+        sim, cfg = make_sim(seed=seed)
+        rng = np.random.default_rng(seed)
+        a = 0
+        for i in range(900):
+            if i % 7 == 0:
+                a = int(rng.integers(4))
+            sim.set_flippers(bool(a & 1), bool(a >> 1))
+            sim.step_control()
+            x, y = sim.ball_pos
+            if y < 0:          # sortie par le drain : fin légitime de la seed
+                break
+            assert -5 <= x <= cfg.width + 5 and y <= cfg.height + 5
 ```
 
 - [ ] **Step 2: Vérifier l'échec**
