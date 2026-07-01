@@ -699,6 +699,16 @@ def test_render_debug_is_rgb_and_scaled():
     img = render_debug(sim, scale=5)
     assert img.mode == "RGB"
     assert img.size == (64 * 5, 64 * 5)
+
+
+def test_render_debug_ball_is_white():
+    # piège PIL : fill=255 sur une image RGB ne colore QUE le canal rouge.
+    # La balle doit être blanc pur (255, 255, 255) dans le rendu debug aussi.
+    sim, cfg = make_sim()
+    sim.ball.position = (cfg.width / 2, cfg.height / 2)
+    px = np.asarray(render_debug(sim, scale=5))
+    center = px[140:180, 140:180]
+    assert (center == 255).all(axis=-1).any()
 ```
 
 - [ ] **Step 2: Vérifier l'échec**
@@ -737,8 +747,8 @@ def _project(cfg, size: int):
     return pt, sx
 
 
-def _draw_board(d: ImageDraw.ImageDraw, sim: PinballSim, pt, wall, flip, ball,
-                width: int = 1) -> None:
+def _draw_board(d: ImageDraw.ImageDraw, sim: PinballSim, pt, wall, flip,
+                ball_px, ball_color, width: int = 1) -> None:
     cfg = sim.config
     d.line([pt((0, 0)), pt((0, cfg.height)), pt((cfg.width, cfg.height)),
             pt((cfg.width, 0))], fill=wall, width=width)
@@ -752,8 +762,8 @@ def _draw_board(d: ImageDraw.ImageDraw, sim: PinballSim, pt, wall, flip, ball,
         d.line([pt(tuple(body.position)), pt(tuple(tip))], fill=flip,
                width=max(2, width * 2))
     bx, by = pt(sim.ball_pos)
-    r = ball
-    d.ellipse([bx - r, by - r, bx + r, by + r], fill=COLOR_BALL)
+    r = ball_px
+    d.ellipse([bx - r, by - r, bx + r, by + r], fill=ball_color)
 
 
 def render_frame(sim: PinballSim, size: int = 64) -> np.ndarray:
@@ -763,7 +773,7 @@ def render_frame(sim: PinballSim, size: int = 64) -> np.ndarray:
     img = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(img)
     ball_px = max(BALL_MIN_PX, cfg.ball_radius * sx)
-    _draw_board(d, sim, pt, COLOR_WALL, COLOR_FLIPPER, ball_px)
+    _draw_board(d, sim, pt, COLOR_WALL, COLOR_FLIPPER, ball_px, COLOR_BALL)
     return np.asarray(img)
 
 
@@ -776,20 +786,20 @@ def render_debug(sim: PinballSim, scale: int = 5) -> Image.Image:
     d = ImageDraw.Draw(img)
     ball_px = max(BALL_MIN_PX * scale, cfg.ball_radius * sx)
     _draw_board(d, sim, pt, (200, 200, 200), (255, 160, 40), ball_px,
-                width=max(1, scale // 2))
+                (255, 255, 255), width=max(1, scale // 2))
     x, y = sim.ball_pos
     d.text((6, 6), f"balle: ({x:.0f}, {y:.0f})  v={sim.ball_speed:.0f}",
            fill=(150, 220, 150))
     return img
 ```
 
-Note : `_draw_board` dessine la balle avec `fill=COLOR_BALL` (blanc) dans les
-deux rendus ; le paramètre `ball` est le rayon en pixels.
+Note : la couleur de la balle est passée par appelant (`ball_color`) car un
+scalaire 255 sur une image RGB ne remplirait que le canal rouge.
 
 - [ ] **Step 4: Vérifier que les tests passent**
 
 Run: `pytest tests/test_render.py -v`
-Expected: 5 PASS.
+Expected: 6 PASS.
 
 - [ ] **Step 5: Commit**
 
