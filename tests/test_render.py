@@ -51,3 +51,13 @@ def test_render_debug_is_rgb_and_scaled():
     img = render_debug(sim, scale=5)
     assert img.mode == "RGB"
     assert img.size == (64 * 5, 64 * 5)
+
+
+def test_render_debug_ball_is_white():
+    # piège PIL : fill=255 sur une image RGB ne colore QUE le canal rouge.
+    # La balle doit être blanc pur (255, 255, 255) dans le rendu debug aussi.
+    sim, cfg = make_sim()
+    sim.ball.position = (cfg.width / 2, cfg.height / 2)
+    px = np.asarray(render_debug(sim, scale=5))
+    center = px[140:180, 140:180]
+    assert (center == 255).all(axis=-1).any()

@@ -26,8 +26,8 @@ def _project(cfg, size: int):
     return pt, sx
 
 
-def _draw_board(d: ImageDraw.ImageDraw, sim: PinballSim, pt, wall, flip, ball,
-                width: int = 1) -> None:
+def _draw_board(d: ImageDraw.ImageDraw, sim: PinballSim, pt, wall, flip,
+                ball_px, ball_color, width: int = 1) -> None:
     cfg = sim.config
     d.line([pt((0, 0)), pt((0, cfg.height)), pt((cfg.width, cfg.height)),
             pt((cfg.width, 0))], fill=wall, width=width)
@@ -41,8 +41,8 @@ def _draw_board(d: ImageDraw.ImageDraw, sim: PinballSim, pt, wall, flip, ball,
         d.line([pt(tuple(body.position)), pt(tuple(tip))], fill=flip,
                width=max(2, width * 2))
     bx, by = pt(sim.ball_pos)
-    r = ball
-    d.ellipse([bx - r, by - r, bx + r, by + r], fill=COLOR_BALL)
+    r = ball_px
+    d.ellipse([bx - r, by - r, bx + r, by + r], fill=ball_color)
 
 
 def render_frame(sim: PinballSim, size: int = 64) -> np.ndarray:
@@ -52,7 +52,7 @@ def render_frame(sim: PinballSim, size: int = 64) -> np.ndarray:
     img = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(img)
     ball_px = max(BALL_MIN_PX, cfg.ball_radius * sx)
-    _draw_board(d, sim, pt, COLOR_WALL, COLOR_FLIPPER, ball_px)
+    _draw_board(d, sim, pt, COLOR_WALL, COLOR_FLIPPER, ball_px, COLOR_BALL)
     return np.asarray(img)
 
 
@@ -65,7 +65,7 @@ def render_debug(sim: PinballSim, scale: int = 5) -> Image.Image:
     d = ImageDraw.Draw(img)
     ball_px = max(BALL_MIN_PX * scale, cfg.ball_radius * sx)
     _draw_board(d, sim, pt, (200, 200, 200), (255, 160, 40), ball_px,
-                width=max(1, scale // 2))
+                (255, 255, 255), width=max(1, scale // 2))
     x, y = sim.ball_pos
     d.text((6, 6), f"balle: ({x:.0f}, {y:.0f})  v={sim.ball_speed:.0f}",
            fill=(150, 220, 150))
