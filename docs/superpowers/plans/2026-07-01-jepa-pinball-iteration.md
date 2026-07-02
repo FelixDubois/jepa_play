@@ -31,8 +31,12 @@ tout avec les APIs existantes (le warm-start réutilise la reprise par checkpoin
   doit le respecter ET le déléguer (elle enveloppe l'agent MPC).
 - Changements d'API STRICTEMENT additifs : `run_episode`/`evaluate` gagnent des clés
   (`nudges`, `mean_nudges`) sans en retirer ; `collect.py` gagne une classe sans
-  modifier les existantes. Les notebooks 01-04 ne doivent pas être touchés.
-- Suite de tests attendue : 53 existants + 3 nouveaux = 56 PASS.
+  modifier les existantes. Le notebook 01 n'est pas touché ; les notebooks 02-04
+  ne changent QUE par la Task 20 (table dure + chemins `*_hard`).
+- Suite de tests attendue : 53 existants + 3 (Task 17) + 1 (Task 20) = 57 PASS.
+- **Table d'expérience (décision utilisateur)** : `hard_board()` =
+  `BoardConfig(drain_gap=120.0, flipper_length=90.0)` partout dans les notebooks
+  02, 04, 05. Les tests du package restent sur la table par défaut.
 
 ## File Structure
 
@@ -40,8 +44,13 @@ tout avec les APIs existantes (le warm-start réutilise la reprise par checkpoin
 pinball/collect.py        # Task 17 — + MixedPolicy
 tests/test_collect.py     # Task 17 — + 3 tests
 jepa/eval.py              # Task 18 — run_episode/evaluate + nudges (additif)
+pinball/config.py         # Task 20 — + hard_board()
+tests/test_config.py      # Task 20 — + 1 test
+notebooks/02..04_*.py     # Task 20 — table dure + chemins *_hard (+ .ipynb)
 notebooks/05_iteration.py # Task 19 — la boucle d'itération (+ .ipynb)
 ```
+
+**Ordre d'exécution : 17 → 18 → 20 → 19** (le notebook 05 consomme `hard_board`).
 
 ---
 
@@ -250,10 +259,15 @@ git commit -m "feat: comptage des nudges dans run_episode/evaluate (additif)"
 # %% [markdown]
 # # 05 — Itérer le world model : l'agent collecte ses propres données
 #
-# Le diagnostic de la V1 était clair : l'agent (25 s) bat largement l'aléatoire
-# (4 s) mais son modèle du monde n'a vu QUE du jeu aléatoire — dès qu'il joue
-# bien, il visite des états que son JEPA connaît mal. Il est hors distribution
+# Le diagnostic de la V1 était clair : l'agent bat largement l'aléatoire mais
+# son modèle du monde n'a vu QUE du jeu aléatoire — dès qu'il joue bien, il
+# visite des états que son JEPA connaît mal. Il est hors distribution
 # précisément quand il réussit.
+#
+# Depuis, le projet est passé sur la **table dure** (`hard_board()` : drain
+# de 120 ouvert — la balle passive tombe au travers — et flippers de 90).
+# Les stratégies aveugles s'y effondrent en ~2 s : il faut voir la balle.
+# Prérequis : avoir relancé les notebooks 02 → 04 sur cette table.
 #
 # La réponse est la boucle classique des world models :
 #
@@ -286,8 +300,8 @@ if IN_COLAB:
     ROOT = Path("/content/drive/MyDrive/jepa_pinball")
 else:
     ROOT = Path(".")
-DATA_V1, DATA_V2 = ROOT / "data/v1", ROOT / "data/v2"
-CKPT_V1, CKPT_V2 = ROOT / "checkpoints", ROOT / "checkpoints_v2"
+DATA_V1, DATA_V2 = ROOT / "data/hard_v1", ROOT / "data/hard_v2"
+CKPT_V1, CKPT_V2 = ROOT / "checkpoints_hard", ROOT / "checkpoints_hard_v2"
 print("device :", "cuda" if torch.cuda.is_available() else "cpu (lent !)")
 
 # %% [markdown]
@@ -316,6 +330,7 @@ print(f"{len(episodes_v1)} épisodes v1, agent V1 prêt (256 candidats)")
 
 # %%
 from pinball.collect import MixedPolicy, collect_dataset
+from pinball.config import hard_board
 from pinball.env import PinballEnv
 
 N_TRANSITIONS_V2 = 50_000
@@ -323,7 +338,7 @@ N_TRANSITIONS_V2 = 50_000
 if DATA_V2.exists() and list(DATA_V2.glob("shard_*.npz")):
     print("Dataset v2 déjà présent — collecte sautée.")
 else:
-    env = PinballEnv(seed=123)
+    env = PinballEnv(hard_board(), seed=123)
     explorer = MixedPolicy(agent_v1, np.random.default_rng(123))
     stats = collect_dataset(env, explorer, N_TRANSITIONS_V2, DATA_V2)
     print(stats)
@@ -376,7 +391,7 @@ agent_v2 = MPCPlanner(jepa_v2, head_v2, n_candidates=256)
 from pinball.collect import StickyRandomPolicy
 from jepa.eval import AlwaysPressed, PeriodicFlapper, evaluate
 
-env = PinballEnv()
+env = PinballEnv(hard_board())
 results = {}
 for name, pol in [("agent V2", agent_v2),
                   ("agent V1", agent_v1),
@@ -411,9 +426,9 @@ plt.show()
 # - **les nudges** : regarde qui survit par lui-même et qui survit sous
 #   perfusion de l'arbitre anti-stagnation. Une survie longue à ~6 nudges
 #   n'a pas la même valeur qu'une survie active à ~0.
-# - Si l'agent V2 dépasse « toujours appuyé » : **critère V1 rempli** —
-#   `git tag v1`. S'il s'approche du flapper : il a probablement appris un
-#   MEILLEUR usage du rythme, informé par la vision.
+# - Sur la table dure, les baselines aveugles meurent en ~2-12 s : si l'agent
+#   V2 dépasse nettement « toujours appuyé », **critère d'acceptation rempli**
+#   — `git tag v1`.
 # - La boucle peut se répéter (v3 : collecter avec agent_v2...) — les gains
 #   diminuent à chaque tour, c'est normal et attendu.
 
@@ -439,6 +454,7 @@ Run: `python -c "
 import tempfile, shutil, numpy as np, torch
 from pathlib import Path
 from pinball.collect import MixedPolicy, StickyRandomPolicy, collect_dataset, load_episodes
+from pinball.config import hard_board
 from pinball.env import PinballEnv
 from jepa.train import train_jepa
 from jepa.heads import train_danger_head
@@ -446,7 +462,7 @@ from jepa.planner import MPCPlanner
 from jepa.eval import evaluate
 with tempfile.TemporaryDirectory() as d:
     d = Path(d)
-    env = PinballEnv(seed=0)
+    env = PinballEnv(hard_board(), seed=0)
     collect_dataset(env, StickyRandomPolicy(np.random.default_rng(0)), 1500, d/'v1')
     eps1 = load_episodes(d/'v1')
     jepa, _ = train_jepa(eps1, d/'ck1', epochs=2, batch_size=64, device='cpu', num_workers=0)
@@ -476,9 +492,112 @@ git commit -m "docs: notebook 05, iteration du world model (collecte par l'agent
 
 ## Validation (manuelle, sur Colab)
 
-1. Pousser la branche mergée, ouvrir notebook 05 sur Colab (T4).
-2. Étapes 1-3 (~45-60 min au total). Critère de réussite de l'itération :
+1. Pousser la branche mergée. **D'abord relancer les notebooks 02 → 04 sur la
+   table dure** (nouveaux dossiers Drive `data/hard_v1` / `checkpoints_hard` —
+   les anciens résultats de la table par défaut restent intacts).
+2. Puis notebook 05 (~45-60 min). Critère de réussite de l'itération :
    **agent V2 > agent V1** (sinon la boucle n'apporte rien — vérifier la part
    d'exploration et la durée des épisodes v2).
-3. Si agent V2 > toujours appuyé : critère d'acceptation V1 rempli → `git tag v1`.
+3. Si agent V2 dépasse nettement « toujours appuyé » (~12 s mesurés en local
+   sur la table dure) : critère d'acceptation rempli → `git tag v1`.
 4. Ensuite : plan V2 (bumpers + score).
+
+---
+
+### Task 20: La table dure devient la configuration officielle
+
+**Décision utilisateur (2026-07-01) :** toutes les expériences passent sur
+`BoardConfig(drain_gap=120.0, flipper_length=90.0)` (la « env2 » du notebook 01).
+Équilibrage mesuré localement : aléatoire 2,1 s (100 % pertes), toujours appuyé
+11,8 s (méd. 2,8 s, 2,6 nudges), flapper aveugle 1,6 s — les stratégies aveugles
+s'effondrent, la vision devient indispensable. Épisodes aléatoires : moy 35 pas,
+min 15 → 0 % trop courts pour k=8. Les datasets/checkpoints Drive existants
+(table par défaut) sont invalidés : nouveaux dossiers `*_hard`, re-run 02→04.
+
+**Files:**
+- Modify: `pinball/config.py` (ajout de `hard_board()` en fin de fichier)
+- Modify: `tests/test_config.py` (ajout d'un test)
+- Modify: `notebooks/02_collecte.py`, `notebooks/03_jepa.py`,
+  `notebooks/04_controle.py` (+ .ipynb régénérés)
+
+**Interfaces:**
+- Produces: `hard_board() -> BoardConfig` — l'unique source de vérité de la
+  table d'expérience, consommée par les notebooks 02, 04, 05.
+- Les tests du package restent sur la table PAR DÉFAUT (leurs hypothèses de
+  géométrie — piège entre les pointes, etc. — sont propres au défaut).
+
+- [ ] **Step 1: Test qui échoue** — ajouter à `tests/test_config.py` :
+
+```python
+def test_hard_board_preset():
+    from pinball.config import hard_board
+    cfg = hard_board()
+    assert cfg.drain_gap == 120.0 and cfg.flipper_length == 90.0
+    # l'ouverture au repos dépasse le diamètre de la balle : vrai trou central
+    assert cfg.drain_gap - 2 * cfg.flipper_thickness > 2 * cfg.ball_radius
+    # les défauts de BoardConfig ne bougent pas
+    assert BoardConfig().drain_gap == 44.0
+```
+
+Run: `pytest tests/test_config.py -v` — Expected: FAIL (ImportError hard_board).
+
+- [ ] **Step 2: Implémenter** — ajouter en fin de `pinball/config.py` :
+
+```python
+def hard_board() -> BoardConfig:
+    """La table officielle des expériences (notebooks 02, 04, 05).
+
+    Drain largement ouvert (120 − 2×12 = 96 > diamètre 28 : la balle passive
+    draine) et flippers courts. Mesuré : toutes les politiques aveugles
+    s'effondrent (~2 s) — il faut VOIR la balle pour survivre.
+    """
+    return BoardConfig(drain_gap=120.0, flipper_length=90.0)
+```
+
+Run: `pytest tests/test_config.py -v` — Expected: 5 PASS.
+
+- [ ] **Step 3: Basculer les notebooks (éditions exactes)**
+
+`notebooks/02_collecte.py` :
+- ligne `DATA_DIR = Path("/content/drive/MyDrive/jepa_pinball/data/v1")`
+  → `DATA_DIR = Path("/content/drive/MyDrive/jepa_pinball/data/hard_v1")`
+- ligne `DATA_DIR = Path("data/v1")` → `DATA_DIR = Path("data/hard_v1")`
+- ligne `from pinball.env import PinballEnv` → ajouter au-dessus :
+  `from pinball.config import hard_board`
+- ligne `env = PinballEnv(seed=42)` → `env = PinballEnv(hard_board(), seed=42)`
+- dans le markdown d'intro, après la phrase sur les balles perdues, ajouter :
+  `# Les expériences tournent sur la TABLE DURE (hard_board) : drain ouvert,`
+  `# flippers courts — les stratégies aveugles ne survivent pas ici.`
+
+`notebooks/03_jepa.py` :
+- `DATA_DIR, CKPT_DIR = ROOT / "data/v1", ROOT / "checkpoints"`
+  → `DATA_DIR, CKPT_DIR = ROOT / "data/hard_v1", ROOT / "checkpoints_hard"`
+
+`notebooks/04_controle.py` :
+- `DATA_DIR, CKPT_DIR = ROOT / "data/v1", ROOT / "checkpoints"`
+  → `DATA_DIR, CKPT_DIR = ROOT / "data/hard_v1", ROOT / "checkpoints_hard"`
+- ajouter `from pinball.config import hard_board` au-dessus de
+  `from pinball.env import PinballEnv`
+- `env = PinballEnv()` → `env = PinballEnv(hard_board())`
+- `env_s = PinballEnv(seed=seed)` (test de scénario)
+  → `env_s = PinballEnv(hard_board(), seed=seed)`
+- dans le markdown « flapper aveugle », remplacer la phrase
+  `# le **flapper aveugle**, qui bat des deux flippers en rythme sans jamais`
+  `# regarder l'écran — et qui survit étonnamment longtemps sur cette table.`
+  par
+  `# le **flapper aveugle**, qui bat des deux flippers en rythme sans regarder`
+  `# l'écran. Sur la table par défaut il survivait 60 s ; sur la table dure,`
+  `# les stratégies aveugles s'effondrent — c'est tout l'intérêt.`
+
+Régénérer : `jupytext --to ipynb notebooks/02_collecte.py notebooks/03_jepa.py notebooks/04_controle.py`
+
+- [ ] **Step 4: Suite complète**
+
+Run: `pytest` — Expected: 57 PASS (56 + 1).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add pinball/config.py tests/test_config.py notebooks/
+git commit -m "feat: hard_board() — la table dure devient la configuration officielle des expériences"
+```
