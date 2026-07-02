@@ -50,3 +50,13 @@ def test_hard_board_preset():
     assert cfg.drain_gap - 2 * cfg.flipper_thickness > 2 * cfg.ball_radius
     # les défauts de BoardConfig ne bougent pas
     assert BoardConfig().drain_gap == 44.0
+
+
+def test_target_fields_and_hard_board():
+    cfg = BoardConfig()
+    assert cfg.n_targets_range == (0, 0)      # défaut : pas de cibles
+    from pinball.config import hard_board
+    hard = hard_board()
+    assert hard.n_targets_range == (1, 3)
+    assert hard.target_zone_y[0] > 350        # au-dessus flippers/slingshots
+    assert not hasattr(cfg, "bumpers")

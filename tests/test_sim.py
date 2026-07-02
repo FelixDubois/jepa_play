@@ -86,3 +86,63 @@ def test_ball_stays_in_bounds_long_episode():
             if y < 0:          # sortie par le drain : fin légitime de la seed
                 break
             assert -5 <= x <= cfg.width + 5 and y <= cfg.height + 5
+
+
+def test_sample_target_positions_respects_zone_and_separation():
+    from pinball.config import hard_board
+    from pinball.sim import sample_target_positions
+    cfg = hard_board()
+    rng = np.random.default_rng(0)
+    for _ in range(20):
+        pts = sample_target_positions(cfg, rng, 3)
+        assert len(pts) == 3
+        for x, y in pts:
+            assert cfg.target_zone_x[0] <= x <= cfg.target_zone_x[1]
+            assert cfg.target_zone_y[0] <= y <= cfg.target_zone_y[1]
+        for i in range(3):
+            for j in range(i + 1, 3):
+                dx = pts[i][0] - pts[j][0]
+                dy = pts[i][1] - pts[j][1]
+                assert (dx * dx + dy * dy) ** 0.5 >= cfg.target_min_sep
+
+
+def test_target_hit_detected_and_removed():
+    # balle lâchée pile au-dessus d'une cible : contact garanti, cible retirée
+    from pinball.config import hard_board
+    cfg = hard_board()
+    sim = PinballSim(cfg, np.random.default_rng(0), targets=[(270.0, 600.0)])
+    sim.ball.position = (270.0, 700.0)
+    sim.ball.velocity = (0.0, -300.0)
+    hits = []
+    for _ in range(30):
+        sim.step_control()
+        hits += sim.consume_hits()
+        if hits:
+            break
+    assert hits == [0]
+    assert sim.target_alive == [False]
+    # plus de contact possible ensuite
+    sim.ball.position = (270.0, 700.0)
+    sim.ball.velocity = (0.0, -300.0)
+    for _ in range(30):
+        sim.step_control()
+    assert sim.consume_hits() == []
+
+
+def test_ball_bounces_off_target():
+    # la cible est SOLIDE : la balle qui tombe dessus repart vers le haut
+    from pinball.config import hard_board
+    cfg = hard_board()
+    sim = PinballSim(cfg, np.random.default_rng(0), targets=[(270.0, 600.0)])
+    sim.ball.position = (270.0, 720.0)
+    sim.ball.velocity = (0.0, -400.0)
+    max_vy = -1e9
+    for _ in range(30):
+        sim.step_control()
+        max_vy = max(max_vy, sim.ball.velocity.y)
+    assert max_vy > 100.0
+
+
+def test_no_targets_by_default():
+    sim, _ = make_sim()
+    assert sim.targets == [] and sim.consume_hits() == []

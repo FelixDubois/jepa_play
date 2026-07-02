@@ -7,14 +7,33 @@ moment), rien n'est scripté.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pymunk
 
 from .config import BoardConfig
 
 
+def sample_target_positions(config: BoardConfig, rng: np.random.Generator,
+                            n: int) -> list[tuple[float, float]]:
+    """n positions de cibles dans la zone sûre, séparées d'au moins
+    target_min_sep (rejet, 500 essais max)."""
+    pts: list[tuple[float, float]] = []
+    for _ in range(500):
+        p = (float(rng.uniform(*config.target_zone_x)),
+             float(rng.uniform(*config.target_zone_y)))
+        if all(math.hypot(p[0] - q[0], p[1] - q[1]) >= config.target_min_sep
+               for q in pts):
+            pts.append(p)
+            if len(pts) == n:
+                return pts
+    raise RuntimeError("placement des cibles impossible (zone trop petite ?)")
+
+
 class PinballSim:
-    def __init__(self, config: BoardConfig, rng: np.random.Generator):
+    def __init__(self, config: BoardConfig, rng: np.random.Generator,
+                 targets: list[tuple[float, float]] | None = None):
         self.config = config
         self._rng = rng
         self.space = pymunk.Space()
@@ -25,6 +44,17 @@ class PinballSim:
         for side in (+1, -1):
             self._add_flipper(side)
         self._add_ball()
+        self.targets = [tuple(t) for t in (targets or [])]
+        self.target_alive = [True] * len(self.targets)
+        self._target_shapes: list[pymunk.Shape] = []
+        self._pending_hits: list[int] = []
+        for (x, y) in self.targets:
+            s = pymunk.Circle(self.space.static_body, config.target_radius,
+                              offset=(x, y))
+            s.elasticity = config.target_elasticity
+            s.friction = config.wall_friction
+            self.space.add(s)
+            self._target_shapes.append(s)
 
     # ---------- construction ----------
     def _build_static(self) -> None:
@@ -101,6 +131,25 @@ class PinballSim:
             v = self.ball.velocity
             if v.length > cfg.max_ball_speed:
                 self.ball.velocity = v * (cfg.max_ball_speed / v.length)
+            self._check_target_hits()
+
+    def _check_target_hits(self) -> None:
+        # par SOUS-PAS : au pas de contrôle, une balle rapide (≤147 u / pas)
+        # traverserait la zone de contact (~84 u) entre deux vérifications
+        if not self.targets:
+            return
+        cfg = self.config
+        bx, by = self.ball_pos
+        reach = cfg.ball_radius + cfg.target_radius + cfg.target_hit_margin
+        for i, (tx, ty) in enumerate(self.targets):
+            if self.target_alive[i] and math.hypot(bx - tx, by - ty) <= reach:
+                self.target_alive[i] = False
+                self._pending_hits.append(i)
+
+    def consume_hits(self) -> list[int]:
+        """Indices des cibles touchées depuis le dernier appel."""
+        hits, self._pending_hits = self._pending_hits, []
+        return hits
 
     def nudge(self) -> None:
         """Petite impulsion aléatoire, biaisée vers le haut (anti-stagnation)."""

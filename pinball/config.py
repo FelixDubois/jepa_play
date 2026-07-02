@@ -7,7 +7,7 @@ Repère : origine en bas à gauche, y vers le haut (convention pymunk).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -68,8 +68,16 @@ class BoardConfig:
     nudge_impulse: float = 300.0     # impulsion du nudge (quantité de mouvement)
     max_nudges: int = 6              # au-delà, fin d'épisode "stuck"
 
-    # --- V2 (bumpers scoreurs) : rempli dans le plan V2 ---
-    bumpers: list = field(default_factory=list)
+    # --- cibles (V2) : plots à toucher, placés aléatoirement par épisode.
+    # Défaut (0, 0) = pas de cibles : la table de base et les tests V1
+    # gardent leur comportement. hard_board() active (1, 3). ---
+    n_targets_range: tuple[int, int] = (0, 0)   # bornes incluses
+    target_radius: float = 26.0
+    target_elasticity: float = 1.2
+    target_zone_x: tuple[float, float] = (70.0, 470.0)
+    target_zone_y: tuple[float, float] = (420.0, 860.0)
+    target_min_sep: float = 100.0
+    target_hit_margin: float = 2.0
 
     # ---------- géométrie dérivée ----------
     @property
@@ -111,5 +119,6 @@ def hard_board() -> BoardConfig:
     Drain largement ouvert (120 − 2×12 = 96 > diamètre 28 : la balle passive
     draine) et flippers courts. Mesuré : toutes les politiques aveugles
     s'effondrent (~2 s) — il faut VOIR la balle pour survivre.
+    + 1 à 3 cibles aléatoires à toucher.
     """
-    return BoardConfig(drain_gap=120.0, flipper_length=90.0)
+    return BoardConfig(drain_gap=120.0, flipper_length=90.0, n_targets_range=(1, 3))
