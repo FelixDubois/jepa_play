@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 from jepa.train import load_jepa, train_jepa
 
@@ -53,3 +54,12 @@ def test_load_jepa_roundtrip(tmp_path):
     obs = torch.randint(0, 255, (2, 2, 64, 64), dtype=torch.uint8)
     assert torch.allclose(model.encode(obs), loaded.encode(obs), atol=1e-6)
     assert not loaded.training
+
+
+def test_train_raises_on_empty_loader(tmp_path):
+    # batch_size > nb de fenêtres + drop_last : sans garde, l'epoch "réussit"
+    # à vide (loss 0, fausse alerte collapse). On exige un échec explicite.
+    eps = [moving_dot_episode(T=15, seed=0)]  # 11 fenêtres à k=4
+    with pytest.raises(ValueError):
+        train_jepa(eps, tmp_path, epochs=1, k=4, batch_size=64,
+                   device="cpu", num_workers=0)

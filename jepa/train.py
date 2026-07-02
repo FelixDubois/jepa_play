@@ -43,6 +43,10 @@ def train_jepa(episodes, out_dir, epochs: int = 10, k: int = 8,
     ds = WindowDataset(episodes, k=k)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True,
                     num_workers=num_workers, drop_last=True)
+    if len(dl) == 0:
+        raise ValueError(
+            f"batch_size={batch_size} > {len(ds)} fenêtres disponibles : "
+            "réduire batch_size ou collecter plus de données")
     use_amp = dev == "cuda"
     scaler = torch.amp.GradScaler(enabled=use_amp)
 
