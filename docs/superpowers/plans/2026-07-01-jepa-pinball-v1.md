@@ -1848,6 +1848,24 @@ def test_ema_update_moves_target():
     jepa.update_target(tau=1.0)
     assert all(torch.allclose(f, a) for f, a in
                zip(frozen, jepa.target_encoder.parameters()))
+
+
+def test_encode_routes_online_and_target():
+    # Pin le routage : encode() = encodeur ONLINE, encode_target() = cible EMA.
+    # Une inversion silencieuse casserait les Tasks 13-14 sans faire échouer
+    # aucun autre test — d'où la perturbation asymétrique.
+    torch.manual_seed(0)
+    jepa = JEPA()
+    obs = torch.randint(0, 255, (3, 2, 64, 64), dtype=torch.uint8)
+    z_on, z_tg = jepa.encode(obs), jepa.encode_target(obs)
+    assert z_on.shape == z_tg.shape == (3, 256)
+    assert not z_on.requires_grad and not z_tg.requires_grad
+    # perturber l'encodeur ONLINE seul : encode() change, encode_target() non
+    with torch.no_grad():
+        for p in jepa.encoder.parameters():
+            p.add_(0.1)
+    assert not torch.allclose(jepa.encode(obs), z_on)
+    assert torch.allclose(jepa.encode_target(obs), z_tg)
 ```
 
 - [ ] **Step 2: Vérifier l'échec**
@@ -1980,7 +1998,7 @@ class JEPA(nn.Module):
 - [ ] **Step 4: Vérifier que les tests passent**
 
 Run: `pytest tests/test_model.py -v`
-Expected: 5 PASS.
+Expected: 6 PASS.
 
 - [ ] **Step 5: Commit**
 
