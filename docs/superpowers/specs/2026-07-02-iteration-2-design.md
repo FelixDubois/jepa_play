@@ -134,6 +134,31 @@ architecture : +6 epochs sur un checkpoint mûr (22) suffisent à pousser la
 lisibilité au-delà du seuil, pendant que les métriques d'entraînement
 s'améliorent — validation directe de la raison d'être du diagnostic n°4.
 
+## 6quater. Amendement — run 2 : le seuil absolu était mal calibré, garde-fou RELATIF (2026-07-02 soir)
+
+Le run 2 a exécuté la contre-expertise et l'issue de secours du §6bis.
+Double renversement :
+
+1. **Ce n'était pas de l'érosion.** Le champion lui-même (epoch 22, jamais
+   repris) lit 0.127 sur les mêmes 40 épisodes de validation — au-dessus du
+   seuil absolu 0.12. Le jeu de champion (balle rapide, haute, près des
+   cibles) est intrinsèquement plus dur à lire que le jeu aléatoire du
+   calibrage (0.108). La dégradation réelle du warm-start : +0.008 seulement
+   (0.127 → 0.135). Un seuil absolu mesurait la distribution, pas le modèle.
+2. **Le from scratch est le vrai perdant : 0.172** (champion + 0.045),
+   variance latente plafonnée à 0.14 (vs 0.21 pour la lignée), copie qui
+   fond à 0.0048. Hypothèse curriculum : la lignée du champion a appris la
+   dynamique sur du jeu aléatoire lent AVANT de voir du jeu d'agent ; le
+   from scratch encaisse le jeu de champion dès l'epoch 1, avec 10 epochs
+   là où la lignée en cumule 22. La recette du champion ne se reproduit pas
+   à bas coût — la boucle raffine, elle ne repart pas de zéro.
+
+Décision utilisateur : **garde-fou RELATIF** — candidat qualifié si
+MAE ≤ MAE_champion + 0.02 sur les mêmes épisodes, même protocole (marge >
+bruit de sonde ~0.01, < vraie casse +0.045). Le warm-start (+0.008) est
+donc qualifié ; l'éval n=200 V3 vs V2 du §4.5 reste la seule question
+ouverte. L'assert final ne bloque que si aucun candidat ne tient la marge.
+
 ## 7. Hors périmètre
 
 - ~~Réentraînement from scratch~~ — écarté au brainstorming comme voie

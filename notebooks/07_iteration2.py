@@ -21,10 +21,13 @@
 # disqualifié et l'ISSUE DE SECOURS prend le relais : réentraînement from
 # scratch sur le même mélange (compteur d'érosion remis à zéro).
 #
-# *Vécu (run 1 sur Colab)* : le garde-fou a bien disqualifié le warm-start —
-# lisibilité 0.135 > 0.12 après 22 → 28 epochs, alors que le diag n°3 restait
-# sain (pred sous copy ×4,1) et que toutes les courbes « s'amélioraient ».
-# C'est exactement le piège pour lequel le diagnostic n°4 existe.
+# *Vécu (runs 1-2 sur Colab)* : le garde-fou ABSOLU (seuil 0.12) a disqualifié
+# le warm-start (0.135)… puis la contre-expertise a montré que le CHAMPION
+# lui-même lit 0.127 sur cette distribution — le seuil, calibré sur du jeu
+# aléatoire, mesurait la difficulté du jeu de champion, pas la casse du
+# modèle. Le garde-fou est donc RELATIF : le candidat doit rester au niveau
+# du champion (+0.02 max) sur les MÊMES épisodes. Le from scratch 10 epochs,
+# lui, est réellement inférieur (0.172) — voir l'issue de secours.
 
 # %%
 import importlib.util, subprocess, sys, os
@@ -152,13 +155,18 @@ plt.show()
 # latents gelés, validation = les 40 derniers épisodes du mélange (du jeu
 # d'agent V2 — là où la lisibilité compte). Verdict :
 #
-# - MAE ≤ 0.12 → on continue ;
-# - MAE > 0.12 → le latent a perdu la balle : MODÈLE DISQUALIFIÉ. L'érosion
-#   est alors LE résultat de l'itération 2 — on s'arrête et on documente
-#   (issue de secours : réentraînement from scratch sur v1+v2+v3).
+# - MAE ≤ MAE_champion + 0.02 (mêmes épisodes, même protocole) → QUALIFIÉ ;
+# - au-delà → le réentraînement a réellement dégradé la lecture : MODÈLE
+#   DISQUALIFIÉ, l'issue de secours prend le relais.
 #
-# Calibrage : la production lit plus haut que les seuils locaux — 0.108 au
-# dernier run SAIN (bon < 0.08 en local, alerte > 0.12 partout).
+# Pourquoi RELATIF et plus absolu ? Le run 1 avait disqualifié le warm-start
+# au seuil 0.12 (calibré notebook 03 sur du jeu aléatoire : 0.108 en prod) ;
+# le run 2 a montré que le champion lui-même lit 0.127 ici — le jeu de
+# champion est plus dur à lire (balle rapide, haute, près des cibles). Un
+# seuil absolu mesurait la distribution, pas le modèle. La référence honnête
+# est le champion sur les MÊMES épisodes ; la marge 0.02 absorbe le bruit de
+# sonde (~0.01) sans laisser passer une vraie casse (le from scratch est à
+# +0.045).
 
 # %%
 from jepa.data import MultiLabelDataset, WindowDataset, stack_obs
@@ -193,13 +201,18 @@ def readability_mae(model, episodes_train, episodes_val):
     naif = (p_tr.mean(0) - p_va).abs().mean().item()
     return mae, naif
 
+MARGE = 0.02  # tolérance vs champion : > bruit de sonde (~0.01), < vraie casse
+
 model_cpu = jepa_v3.to("cpu").eval()
+champion_cpu = jepa_v2.to("cpu").eval()
 mae_warm, naif = readability_mae(model_cpu, episodes_mixed[:-40], episodes_mixed[-40:])
-print(f"lisibilité (warm-start, epoch {epoch_v2 + 6}) : MAE = {mae_warm:.3f} "
+mae_champ, _ = readability_mae(champion_cpu, episodes_mixed[:-40], episodes_mixed[-40:])
+print(f"champion   (epoch {epoch_v2})     : MAE = {mae_champ:.3f}  ← référence")
+print(f"warm-start (epoch {epoch_v2 + 6}) : MAE = {mae_warm:.3f} "
       f"(devin naïf : {naif:.3f})")
-LISIBLE = mae_warm <= 0.12
-print("VERDICT :", "OK, on continue" if LISIBLE
-      else "DISQUALIFIÉ — le latent a perdu la balle : issue de secours")
+LISIBLE = mae_warm <= mae_champ + MARGE
+print("VERDICT :", "QUALIFIÉ — au niveau du champion" if LISIBLE
+      else "DISQUALIFIÉ — dégradation réelle : issue de secours")
 
 # %%
 # la glissade connue : copy_h8 mesure combien le monde BOUGE dans le latent
@@ -222,33 +235,20 @@ print(f"pred_h8 = {pred_err[-1]:.4f}  copy_h8 = {copy_err[-1]:.4f} "
       f"(pred sous copy ×{copy_err[-1]/pred_err[-1]:.1f})")
 
 # %% [markdown]
-# ### Contre-expertise : érosion réelle, ou seuil mal calibré ?
-#
-# Le seuil 0.12 a été calibré au notebook 03 sur du jeu ALÉATOIRE ; la
-# validation ci-dessus est du jeu de CHAMPION — peut-être plus dur à lire en
-# soi (balle souvent haute, près des cibles). Contrôle : l'encodeur du
-# champion (epoch 22, jamais repris) lit les MÊMES épisodes avec le même
-# protocole. S'il lit nettement mieux, l'érosion est confirmée proprement ;
-# s'il lit pareil, c'est le seuil qui est en cause, pas le warm-start.
-
-# %%
-champion_cpu = jepa_v2.to("cpu").eval()
-mae_champ, _ = readability_mae(champion_cpu, episodes_mixed[:-40], episodes_mixed[-40:])
-print(f"champion   (epoch {epoch_v2})     : MAE = {mae_champ:.3f}")
-print(f"warm-start (epoch {epoch_v2 + 6}) : MAE = {mae_warm:.3f}")
-print("→ érosion confirmée : la reprise a dégradé la lecture"
-      if mae_warm > mae_champ + 0.01 else
-      "→ pas d'érosion nette : seuil mal calibré pour cette distribution")
-
-# %% [markdown]
 # ## Issue de secours : réentraîner from scratch sur v1+v2+v3
 #
-# Le warm-start empile ses epochs sur un checkpoint déjà mûr (22) — l'issue
-# de secours remet le compteur d'érosion à zéro : même recette que le
-# notebook 03 (10 epochs), mêmes données mixtes, dossier NEUF
-# (`checkpoints_targets_v3_scratch`). Si le warm-start est passé, cette
-# cellule ne fait rien ; sinon elle produit le candidat de remplacement,
-# re-vérifié au même garde-fou.
+# Si le warm-start a réellement dégradé la lecture, on remet le compteur à
+# zéro : même recette que le notebook 03 (10 epochs), mêmes données mixtes,
+# dossier NEUF (`checkpoints_targets_v3_scratch`). Si le warm-start est
+# qualifié, cette cellule ne fait rien.
+#
+# *Vécu (run 2)* : le from scratch 10 epochs lit 0.172 (champion + 0.045) —
+# NETTEMENT inférieur, avec une variance latente qui plafonne à 0.14 (vs
+# 0.21 pour la lignée du champion). Hypothèse : effet CURRICULUM — la lignée
+# du champion a appris la dynamique sur du jeu aléatoire lent avant de voir
+# du jeu d'agent ; le from scratch encaisse le jeu de champion dès l'epoch 1,
+# avec 10 epochs là où la lignée en cumule 22. La recette du champion ne se
+# reproduit pas à bas coût.
 
 # %%
 CKPT_SCRATCH = ROOT / "checkpoints_targets_v3_scratch"
@@ -263,11 +263,12 @@ else:
     mae_scratch, naif_s = readability_mae(scratch_cpu, episodes_mixed[:-40],
                                           episodes_mixed[-40:])
     print(f"lisibilité (from scratch, epoch 10) : MAE = {mae_scratch:.3f} "
-          f"(devin naïf : {naif_s:.3f})")
+          f"(champion {mae_champ:.3f} ; devin naïf : {naif_s:.3f})")
     jepa_final, ckpt_final = jepa_scratch, CKPT_SCRATCH
     mae_final, mode = mae_scratch, "from scratch (epoch 10)"
 
-print(f"candidat V3 = {mode}, lisibilité {mae_final:.3f}")
+print(f"candidat V3 = {mode}, lisibilité {mae_final:.3f} "
+      f"(référence champion {mae_champ:.3f} + marge {MARGE})")
 
 # %% [markdown]
 # ## Étape 3 : têtes V3, puis évaluation n=200 (V3 vs V2)
@@ -277,10 +278,11 @@ print(f"candidat V3 = {mode}, lisibilité {mae_final:.3f}")
 # balle coûterait ~1 h pour un chiffre sans signification.
 
 # %%
-assert mae_final <= 0.12, (
-    "Garde-fou : lisibilité balle > 0.12 même from scratch — aucun candidat "
-    "évaluable. Le résultat de l'itération 2 est que ce mélange de données "
-    "ne produit pas de latent lisible : à documenter tel quel.")
+assert mae_final <= mae_champ + MARGE, (
+    "Garde-fou : aucun candidat au niveau du champion sur les mêmes "
+    "épisodes (warm-start ET from scratch dégradés). Le résultat de "
+    "l'itération 2 est qu'aucun réentraînement ne préserve la lecture : "
+    "à documenter tel quel.")
 
 from jepa.heads import train_objective_heads
 
@@ -357,10 +359,11 @@ else:
 #   l'agent V2 visite déjà les états utiles : le mélange n'apporte plus
 #   grand-chose de neuf. Les rendements décroissants sont la règle des
 #   boucles world-model, pas l'exception.
-# - **Si le warm-start a été disqualifié** (vécu au run 1 : 0.135) : c'est
-#   déjà un résultat — la boucle ne peut PAS empiler les reprises, le
-#   compteur d'érosion doit repartir de zéro à chaque tour. Si le from
-#   scratch passe puis gagne, la boucle tient — mais au prix d'un
-#   réentraînement complet par itération, pas d'un raffinement.
+# - **Leçon des runs 1-2 (garde-fou)** : un seuil absolu de lisibilité
+#   mesurait la DISTRIBUTION (le jeu de champion est plus dur à lire :
+#   champion 0.127 vs 0.108 sur jeu aléatoire), pas la santé du modèle —
+#   d'où le garde-fou relatif au champion. Et le from scratch 10 epochs
+#   (0.172) montre que la lignée du champion ne se reproduit pas à bas
+#   coût : la boucle raffine, elle ne repart pas de zéro.
 # - Dans tous les cas, les nudges restent le détecteur de triche : un agent
 #   qui gagne en nudgeant a trouvé une faille, pas une stratégie.
