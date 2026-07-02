@@ -96,11 +96,49 @@ data/targets_v3  (50k, agent V2 mixte)   → copie jepa.pt →
   (comme pour les notebooks 01-06). Coût attendu : collecte ~20-40 min CPU,
   +6 epochs GPU courts, éval n=200 × 2 agents.
 
-## 6. Hors périmètre
+## 6bis. Amendement — run 1 Colab : garde-fou déclenché, issue de secours intégrée (2026-07-02 soir)
 
-- Réentraînement from scratch (écarté au brainstorming : change deux
-  variables, coûte plus, casse la narration warm-start ; reste l'issue de
-  secours documentée si le garde-fou disqualifie).
+Le run 1 sur Colab a déclenché le garde-fou : **warm-start disqualifié**
+(lisibilité 0.135 > 0.12 après 22 → 28 epochs), alors que le diag n°3
+restait sain (pred sous copy ×4,1) et que toutes les courbes
+d'entraînement « s'amélioraient » (baseline copie fondant 0.0092 → 0.0072 —
+la signature epoch par epoch de l'érosion). La collecte est un succès
+acquis : 832 épisodes champion, durée moyenne 4,0 s (vs 2,8 s agent V1,
+2,1 s aléatoire), `data/targets_v3` réutilisable.
+
+Décision utilisateur : activer l'issue de secours prévue au §4.4, enrichie
+d'une contre-expertise. Amendements au notebook 07 :
+
+1. **Contre-expertise** (nouvelle cellule) : le seuil 0.12 a été calibré sur
+   du jeu aléatoire, la validation ici est du jeu de champion — l'encodeur
+   du champion (epoch 22) lit donc les MÊMES 40 épisodes avec le même
+   protocole. S'il lit nettement mieux que 0.135, l'érosion est confirmée ;
+   s'il lit pareil, c'est le seuil qui est mal calibré pour cette
+   distribution.
+2. **Issue de secours intégrée** (nouvelle section) : si le warm-start est
+   disqualifié, réentraînement from scratch 10 epochs (recette notebook 03)
+   sur v1+v2+v3 dans un dossier NEUF `checkpoints_targets_v3_scratch`,
+   re-vérifié au même garde-fou. Têtes et éval tournent sur `jepa_final`
+   (le candidat survivant) ; l'assert final ne bloque que si AUCUN candidat
+   ne passe.
+3. **Reprise épinglée au champion** : `epochs=epoch_v2 + 6` au lieu de
+   `ckpt_epoch + 6` — re-exécuter le notebook n'empile plus 6 epochs
+   d'érosion à chaque passage (piège découvert en préparant le re-run).
+4. `readability_mae(model, train, val)` factorisée (elle sert trois fois :
+   warm-start, champion, from scratch).
+
+## 6ter. Résultat partiel acquis (run 1)
+
+Le warm-start répété N'EST PAS une recette d'itération viable sur cette
+architecture : +6 epochs sur un checkpoint mûr (22) suffisent à pousser la
+lisibilité au-delà du seuil, pendant que les métriques d'entraînement
+s'améliorent — validation directe de la raison d'être du diagnostic n°4.
+
+## 7. Hors périmètre
+
+- ~~Réentraînement from scratch~~ — écarté au brainstorming comme voie
+  principale, puis INTÉGRÉ comme issue de secours par l'amendement §6bis
+  (le garde-fou a disqualifié le warm-start au run 1).
 - Score numérique par cible, curriculum `n_targets`, imagination
   contrefactuelle : autres suites possibles, non couvertes ici.
 - Toute modification des notebooks 01-06 (le 06 se repointe sur v3 en
