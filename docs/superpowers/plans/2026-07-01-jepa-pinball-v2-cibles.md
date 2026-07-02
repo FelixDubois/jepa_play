@@ -132,6 +132,7 @@ def test_sample_target_positions_respects_zone_and_separation():
                 dx = pts[i][0] - pts[j][0]
                 dy = pts[i][1] - pts[j][1]
                 assert (dx * dx + dy * dy) ** 0.5 >= cfg.target_min_sep
+    assert sample_target_positions(cfg, rng, 0) == []   # n=0 : liste vide
 
 
 def test_target_hit_detected_and_removed():
@@ -231,6 +232,8 @@ def sample_target_positions(config: BoardConfig, rng: np.random.Generator,
                             n: int) -> list[tuple[float, float]]:
     """n positions de cibles dans la zone sûre, séparées d'au moins
     target_min_sep (rejet, 500 essais max)."""
+    if n == 0:
+        return []
     pts: list[tuple[float, float]] = []
     for _ in range(500):
         p = (float(rng.uniform(*config.target_zone_x)),
