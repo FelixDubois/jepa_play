@@ -81,3 +81,59 @@ def test_candidate_sequences_use_instance_seed():
     c = make_planner(seed=6)._candidate_sequences()
     assert np.array_equal(a, b)
     assert not np.array_equal(a, c)
+
+
+# Task 27: Multi-objective planner tests
+
+
+class ZeroDanger(nn.Module):
+    def forward(self, z):
+        return torch.zeros(z.shape[0])
+
+
+class OracleHeight(nn.Module):
+    """hauteur = sigmoïde de z[1] : l'action qui monte z[1] est la meilleure."""
+
+    def forward(self, z):
+        return torch.sigmoid(z[..., 1])
+
+
+class AxisPredictor(nn.Module):
+    """action 1 augmente z[1] ; action 3 augmente z[2] ; les autres neutres."""
+
+    def forward(self, z, a):
+        out = z.clone()
+        out[..., 1] = out[..., 1] + torch.where(a == 1, 1.0, 0.0)
+        out[..., 2] = out[..., 2] + torch.where(a == 3, 1.0, 0.0)
+        return out
+
+
+class OracleTarget(nn.Module):
+    def forward(self, z):
+        return z[..., 2]          # logits : hauts si z[2] grand
+
+
+def make_multi_planner(**kwargs):
+    jepa = JEPA()
+    jepa.predictor = AxisPredictor()
+    return MPCPlanner(jepa, ZeroDanger(), device="cpu", n_candidates=0, **kwargs)
+
+
+def test_height_head_steers_planner():
+    planner = make_multi_planner(height_head=OracleHeight(), w_height=1.0)
+    obs = np.zeros((2, 64, 64), dtype=np.uint8)
+    assert planner.plan(obs) == 1        # monter z[1] = monter la hauteur
+
+
+def test_target_head_outweighs_height():
+    planner = make_multi_planner(height_head=OracleHeight(), w_height=0.5,
+                                 target_head=OracleTarget(), w_target=2.0)
+    obs = np.zeros((2, 64, 64), dtype=np.uint8)
+    assert planner.plan(obs) == 3        # w_target > w_height : viser la cible
+
+
+def test_danger_only_still_works():
+    # l'API historique (danger seul) reste intacte
+    planner = make_planner(n_candidates=0)
+    obs = np.zeros((2, 64, 64), dtype=np.uint8)
+    assert planner.plan(obs) == 2

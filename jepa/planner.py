@@ -14,10 +14,18 @@ import torch
 class MPCPlanner:
     def __init__(self, jepa, danger_head, horizon: int = 8,
                  n_candidates: int = 64, switch_prob: float = 0.2,
-                 device: str | None = None, seed: int = 0):
+                 device: str | None = None, seed: int = 0,
+                 height_head=None, target_head=None,
+                 w_danger: float = 1.0, w_height: float = 0.5,
+                 w_target: float = 2.0):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.jepa = jepa.to(self.device).eval()
         self.danger_head = danger_head.to(self.device).eval()
+        self.height_head = height_head.to(self.device).eval() if height_head is not None else None
+        self.target_head = target_head.to(self.device).eval() if target_head is not None else None
+        self.w_danger = w_danger
+        self.w_height = w_height
+        self.w_target = w_target
         self.horizon = horizon
         self.n_candidates = n_candidates
         self.switch_prob = switch_prob
@@ -49,7 +57,11 @@ class MPCPlanner:
         cost = torch.zeros(len(seqs), device=self.device)
         for t in range(self.horizon):
             z = self.jepa.predictor(z, actions[:, t])
-            cost += torch.sigmoid(self.danger_head(z))
+            cost += self.w_danger * torch.sigmoid(self.danger_head(z))
+            if self.height_head is not None:
+                cost -= self.w_height * self.height_head(z)
+            if self.target_head is not None:
+                cost -= self.w_target * torch.sigmoid(self.target_head(z))
         best = int(torch.argmin(cost).item())
         return int(seqs[best, 0])
 
