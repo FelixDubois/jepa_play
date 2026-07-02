@@ -114,7 +114,8 @@ class OracleTarget(nn.Module):
 
 
 def make_multi_planner(**kwargs):
-    jepa = JEPA()
+    torch.manual_seed(0)   # z0 déterministe : la course de marges entre les
+    jepa = JEPA()          # deux sigmoïdes dépend du tirage de l'encodeur
     jepa.predictor = AxisPredictor()
     return MPCPlanner(jepa, ZeroDanger(), device="cpu", n_candidates=0, **kwargs)
 
