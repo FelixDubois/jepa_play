@@ -39,7 +39,7 @@ def _play_episode(env: PinballEnv, policy) -> dict:
     obs = env.reset()
     policy.reset()
     frames = [obs[1]]           # frame brute du reset
-    actions, positions = [], []
+    actions, positions, hits_list = [], [], []
     info = {"ball_pos": None}
     while True:
         a = policy(obs)
@@ -47,6 +47,7 @@ def _play_episode(env: PinballEnv, policy) -> dict:
         actions.append(a)
         frames.append(obs[1])   # la frame "présent" du stack
         positions.append(info["ball_pos"])
+        hits_list.append(info["hit_now"])
         if info["done"]:
             break
     pos0 = positions[0]         # position au reset non exposée : duplique t=1
@@ -55,6 +56,10 @@ def _play_episode(env: PinballEnv, policy) -> dict:
         "actions": np.asarray(actions, dtype=np.int64),
         "ball_pos": np.asarray([pos0] + positions, dtype=np.float32),
         "ball_lost": bool(info["ball_lost"]),
+        "hits": np.asarray(hits_list, dtype=np.uint8),
+        "targets_total": int(info["targets_total"]),
+        "completed": bool(info["completed"]),
+        "stuck": bool(info["stuck"]),
     }
 
 
@@ -67,6 +72,10 @@ def _write_shard(path: Path, episodes: list[dict]) -> None:
         frame_counts=np.asarray([len(ep["frames"]) for ep in episodes]),
         action_counts=np.asarray([len(ep["actions"]) for ep in episodes]),
         ball_lost=np.asarray([ep["ball_lost"] for ep in episodes]),
+        hits=np.concatenate([ep["hits"] for ep in episodes]),
+        targets_total=np.asarray([ep["targets_total"] for ep in episodes], dtype=np.int64),
+        completed=np.asarray([ep["completed"] for ep in episodes], dtype=bool),
+        stuck=np.asarray([ep["stuck"] for ep in episodes], dtype=bool),
     )
 
 
@@ -104,13 +113,21 @@ def load_episodes(data_dir) -> list[dict]:
             frame_counts = z["frame_counts"]
             action_counts = z["action_counts"]
             ball_lost = z["ball_lost"]
+            hits = z["hits"]
+            targets_total = z["targets_total"]
+            completed = z["completed"]
+            stuck = z["stuck"]
         f_ofs = a_ofs = 0
-        for fc, ac, lost in zip(frame_counts, action_counts, ball_lost):
+        for fc, ac, lost, tt, comp, stk in zip(frame_counts, action_counts, ball_lost, targets_total, completed, stuck):
             episodes.append({
                 "frames": frames[f_ofs:f_ofs + fc],
                 "actions": actions[a_ofs:a_ofs + ac],
                 "ball_pos": ball_pos[f_ofs:f_ofs + fc],
                 "ball_lost": bool(lost),
+                "hits": hits[a_ofs:a_ofs + ac],
+                "targets_total": int(tt),
+                "completed": bool(comp),
+                "stuck": bool(stk),
             })
             f_ofs += fc
             a_ofs += ac

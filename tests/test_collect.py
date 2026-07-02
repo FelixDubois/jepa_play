@@ -107,3 +107,31 @@ def test_mixed_policy_reset_propagates():
     policy.reset()
     policy.reset()
     assert primary.resets >= 2
+
+
+def test_episode_records_hits_and_endings(tmp_path):
+    from pinball.config import hard_board
+    env = PinballEnv(hard_board(), seed=0)
+    policy = StickyRandomPolicy(np.random.default_rng(0))
+    collect_dataset(env, policy, n_transitions=600, out_dir=tmp_path)
+    episodes = load_episodes(tmp_path)
+    for ep in episodes:
+        T = len(ep["actions"])
+        assert ep["hits"].shape == (T,) and ep["hits"].dtype == np.uint8
+        assert 1 <= int(ep["targets_total"]) <= 3
+        assert isinstance(bool(ep["completed"]), bool)
+        assert isinstance(bool(ep["stuck"]), bool)
+        # cohérence : un épisode complété a touché toutes ses cibles
+        if ep["completed"]:
+            assert ep["hits"].sum() >= ep["targets_total"]
+    # le jeu aléatoire touche des cibles de temps en temps (mesuré ~21 %)
+    assert any(ep["hits"].sum() > 0 for ep in episodes)
+
+
+def test_default_table_records_zero_targets(tmp_path):
+    env = PinballEnv(BoardConfig(max_episode_steps=40), seed=0)
+    policy = StickyRandomPolicy(np.random.default_rng(0))
+    collect_dataset(env, policy, n_transitions=100, out_dir=tmp_path)
+    episodes = load_episodes(tmp_path)
+    assert all(int(ep["targets_total"]) == 0 for ep in episodes)
+    assert all(not ep["completed"] for ep in episodes)
