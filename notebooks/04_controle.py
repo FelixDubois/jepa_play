@@ -10,24 +10,11 @@
 #    AUCUN apprentissage — le « bien jouer » émerge du modèle du monde.
 
 # %%
-import importlib.util, subprocess, sys, os
-IN_COLAB = importlib.util.find_spec("google.colab") is not None
-if IN_COLAB and not os.path.exists("jepa_play"):
-    subprocess.run(["git", "clone", "https://github.com/FelixDubois/jepa_play.git"], check=True)
-    os.chdir("jepa_play")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
-
-# %%
 from pathlib import Path
 import numpy as np
 import torch
-if IN_COLAB:
-    from google.colab import drive
-    drive.mount("/content/drive")
-    ROOT = Path("/content/drive/MyDrive/jepa_pinball")
-else:
-    ROOT = Path(".")
-DATA_DIR, CKPT_DIR = ROOT / "data/hard_v1", ROOT / "checkpoints_hard"
+
+DATA_DIR, CKPT_DIR = Path("data/hard_v1"), Path("checkpoints_hard")
 
 # %%
 from pinball.collect import load_episodes

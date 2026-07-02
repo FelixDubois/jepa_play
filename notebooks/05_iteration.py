@@ -24,27 +24,14 @@
 # baseline « toujours appuyé » survit surtout grâce à eux.
 
 # %%
-import importlib.util, subprocess, sys, os
-IN_COLAB = importlib.util.find_spec("google.colab") is not None
-if IN_COLAB and not os.path.exists("jepa_play"):
-    subprocess.run(["git", "clone", "https://github.com/FelixDubois/jepa_play.git"], check=True)
-    os.chdir("jepa_play")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
-
-# %%
 from pathlib import Path
 import shutil
 import numpy as np
 import torch
-if IN_COLAB:
-    from google.colab import drive
-    drive.mount("/content/drive")
-    ROOT = Path("/content/drive/MyDrive/jepa_pinball")
-else:
-    ROOT = Path(".")
-DATA_V1, DATA_V2 = ROOT / "data/hard_v1", ROOT / "data/hard_v2"
-CKPT_V1, CKPT_V2 = ROOT / "checkpoints_hard", ROOT / "checkpoints_hard_v2"
-print("device :", "cuda" if torch.cuda.is_available() else "cpu (lent !)")
+
+DATA_V1, DATA_V2 = Path("data/hard_v1"), Path("data/hard_v2")
+CKPT_V1, CKPT_V2 = Path("checkpoints_hard"), Path("checkpoints_hard_v2")
+print("device :", "cuda" if torch.cuda.is_available() else "cpu")
 
 # %% [markdown]
 # ## Recharger l'agent V1
@@ -64,7 +51,7 @@ agent_v1 = MPCPlanner(jepa_v1, head_v1, n_candidates=256)
 print(f"{len(episodes_v1)} épisodes v1, agent V1 prêt (256 candidats)")
 
 # %% [markdown]
-# ## Étape 1 : l'agent collecte (~15-30 min sur T4)
+# ## Étape 1 : l'agent collecte (~20-40 min sur CPU)
 #
 # `MixedPolicy` fait jouer l'agent avec ~20 % de rafales aléatoires collantes.
 # Le simulateur n'attend personne : chaque pas coûte surtout la planification

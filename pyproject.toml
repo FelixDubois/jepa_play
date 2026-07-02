@@ -16,8 +16,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "jupytext"]
-# préinstallés sur Colab ; nécessaires en local pour exécuter les notebooks
-notebooks = ["matplotlib", "ipywidgets"]
+# nécessaires pour exécuter les notebooks en local
+notebooks = ["matplotlib", "ipywidgets", "jupyterlab"]
 
 [tool.setuptools]
 packages = ["pinball", "jepa"]

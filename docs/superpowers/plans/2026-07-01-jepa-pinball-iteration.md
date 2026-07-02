@@ -2,6 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Note (2026-07-01, décision utilisateur) :** les notebooks du repo sont passés
+> en *local-first* (cellules d'installation Colab et montage Drive retirées,
+> chemins locaux directs). Les listings de notebooks ci-dessous documentent la
+> version Colab d'origine — voir le README pour l'exécution locale.
+
 **Goal:** Fermer la boucle world-model : l'agent V1 collecte lui-même de nouvelles
 données (avec rafales d'exploration), le JEPA et la tête danger se réentraînent sur
 le dataset mixte, et l'agent V2 est comparé à V1 et aux baselines — avec un panneau

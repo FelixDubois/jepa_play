@@ -2,6 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Note (2026-07-01, décision utilisateur) :** les notebooks du repo sont passés
+> en *local-first* (cellules d'installation Colab et montage Drive retirées,
+> chemins locaux directs). Les listings de notebooks ci-dessous documentent la
+> version Colab d'origine — voir le README pour l'exécution locale.
+
 **Goal:** Un agent qui apprend à garder une balle de flipper en jeu : simulateur physique pymunk paramétrable, world model JEPA conditionné par l'action, tête danger, planification MPC — le tout piloté par des notebooks Colab pédagogiques en français.
 
 **Architecture:** Package Python `pinball` (simulation, rendu, env, collecte) + package `jepa` (modèle, entraînement, têtes, planificateur, éval). Notebooks minces en jupytext py:percent convertis en .ipynb. Entraînement offline sur dataset collecté par politique aléatoire.

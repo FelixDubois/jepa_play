@@ -10,22 +10,10 @@
 # flippers courts — les stratégies aveugles ne survivent pas ici.
 
 # %%
-import importlib.util, subprocess, sys, os
-IN_COLAB = importlib.util.find_spec("google.colab") is not None
-if IN_COLAB and not os.path.exists("jepa_play"):
-    subprocess.run(["git", "clone", "https://github.com/FelixDubois/jepa_play.git"], check=True)
-    os.chdir("jepa_play")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
-
-# %%
 from pathlib import Path
-if IN_COLAB:
-    from google.colab import drive
-    drive.mount("/content/drive")
-    DATA_DIR = Path("/content/drive/MyDrive/jepa_pinball/data/hard_v1")
-else:
-    DATA_DIR = Path("data/hard_v1")
-print("Dataset →", DATA_DIR)
+
+DATA_DIR = Path("data/hard_v1")
+print("Dataset →", DATA_DIR.resolve())
 
 # %%
 import numpy as np

@@ -4,15 +4,9 @@
 # Dans ce notebook : construire la table, comprendre ses paramètres, regarder
 # la physique tourner, et jouer manuellement pour vérifier que le flipper est
 # agréable. **Aucun apprentissage ici** — d'abord, un monde qui fonctionne.
-
-# %%
-# Installation (Colab : cloner le repo ; local : repo déjà présent)
-import importlib.util, subprocess, sys, os
-IN_COLAB = importlib.util.find_spec("google.colab") is not None
-if IN_COLAB and not os.path.exists("jepa_play"):
-    subprocess.run(["git", "clone", "https://github.com/FelixDubois/jepa_play.git"], check=True)
-    os.chdir("jepa_play")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
+#
+# Exécution locale : lancer Jupyter depuis la **racine du repo**, avec le
+# noyau du venv du projet (`.venv`) — voir le README pour la mise en place.
 
 # %%
 import matplotlib.pyplot as plt

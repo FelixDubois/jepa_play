@@ -12,24 +12,11 @@
 #    ses PROPRES prédictions — car c'est ce que la planification lui demandera.
 
 # %%
-import importlib.util, subprocess, sys, os
-IN_COLAB = importlib.util.find_spec("google.colab") is not None
-if IN_COLAB and not os.path.exists("jepa_play"):
-    subprocess.run(["git", "clone", "https://github.com/FelixDubois/jepa_play.git"], check=True)
-    os.chdir("jepa_play")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
-
-# %%
 from pathlib import Path
 import torch
-if IN_COLAB:
-    from google.colab import drive
-    drive.mount("/content/drive")
-    ROOT = Path("/content/drive/MyDrive/jepa_pinball")
-else:
-    ROOT = Path(".")
-DATA_DIR, CKPT_DIR = ROOT / "data/hard_v1", ROOT / "checkpoints_hard"
-print("device :", "cuda" if torch.cuda.is_available() else "cpu (lent ! activer le GPU)")
+
+DATA_DIR, CKPT_DIR = Path("data/hard_v1"), Path("checkpoints_hard")
+print("device :", "cuda" if torch.cuda.is_available() else "cpu")
 
 # %%
 from pinball.collect import load_episodes
@@ -40,8 +27,10 @@ print(f"{len(episodes)} épisodes, "
 # %% [markdown]
 # ## Entraînement
 #
-# ~20-40 min sur T4. Le checkpoint est écrit sur Drive à CHAQUE epoch :
-# si Colab déconnecte, relancer cette cellule reprend où on en était.
+# C'est l'étape la plus longue du projet : ~1 à 2 h sur un CPU 6 cœurs
+# (quelques dizaines de minutes avec un GPU). On peut interrompre sans
+# risque : le checkpoint est écrit à CHAQUE epoch dans `checkpoints_hard/`
+# et relancer cette cellule reprend automatiquement où on en était.
 
 # %%
 from jepa.train import train_jepa
