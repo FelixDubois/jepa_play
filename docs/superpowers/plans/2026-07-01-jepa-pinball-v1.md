@@ -2352,6 +2352,14 @@ plt.show()
 # On prend des fenêtres de validation, on déroule le prédicteur 8 pas, et on
 # compare l'erreur à la baseline copie, PAS À PAS. L'erreur croît avec
 # l'horizon (normal), mais doit rester sous la baseline.
+#
+# **Pourquoi deux encodeurs dans ce code ?** Le prédicteur consomme le latent
+# de l'encodeur **online** (`encode`) — exactement comme à l'entraînement —
+# tandis que toutes les cibles vivent dans l'espace de l'encodeur **cible
+# EMA** (`encode_target`) : le prédicteur est donc une fonction
+# « online → espace cible ». C'est aussi pour cela que la tête danger
+# (notebook 04) sera entraînée sur des latents `encode_target` : en
+# planification, elle ne verra que des ẑ prédits, qui approximent des z̄.
 
 # %%
 ds = WindowDataset(episodes[-50:], k=8)
