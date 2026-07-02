@@ -176,6 +176,6 @@ print(f"lisibilité de la balle : MAE = {mae:.3f} (devin naïf : {naif:.3f})")
 print("bon signe si < 0.08 ; au-delà de 0.12, le latent a perdu la balle.")
 
 # %% [markdown]
-# Si les trois diagnostics sont bons, le modèle du monde est prêt.
+# Si les quatre diagnostics sont bons, le modèle du monde est prêt.
 # Prochaine étape (notebook 04) : s'en servir pour JOUER — tête danger,
 # puis planification dans l'imagination.
