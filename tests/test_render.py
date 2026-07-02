@@ -61,3 +61,27 @@ def test_render_debug_ball_is_white():
     px = np.asarray(render_debug(sim, scale=5))
     center = px[140:180, 140:180]
     assert (center == 255).all(axis=-1).any()
+
+
+def test_targets_rendered_and_disappear():
+    from pinball.config import hard_board
+    from pinball.sim import PinballSim
+    cfg = hard_board()
+    sim = PinballSim(cfg, np.random.default_rng(0), targets=[(270.0, 600.0)])
+    sim.ball.position = (100.0, 850.0)   # balle loin de la cible
+    f1 = render_frame(sim)
+    assert (f1 == 150).sum() >= 12       # le disque gris est là (~3 px de rayon)
+    sim.target_alive[0] = False          # cible éteinte
+    f2 = render_frame(sim)
+    assert (f2 == 150).sum() == 0
+
+
+def test_dead_target_leaves_debug_render():
+    from pinball.config import hard_board
+    from pinball.sim import PinballSim
+    cfg = hard_board()
+    sim = PinballSim(cfg, np.random.default_rng(0), targets=[(270.0, 600.0)])
+    px1 = np.asarray(render_debug(sim))
+    sim.target_alive[0] = False
+    px2 = np.asarray(render_debug(sim))
+    assert not np.array_equal(px1, px2)

@@ -14,6 +14,7 @@ from .sim import PinballSim
 COLOR_WALL = 90
 COLOR_FLIPPER = 180
 COLOR_BALL = 255
+COLOR_TARGET = 150
 BALL_MIN_PX = 2.0   # plancher de visibilité de la balle
 
 
@@ -27,7 +28,7 @@ def _project(cfg, size: int):
 
 
 def _draw_board(d: ImageDraw.ImageDraw, sim: PinballSim, pt, wall, flip,
-                ball_px, ball_color, width: int = 1) -> None:
+                ball_px, ball_color, target_color, width: int = 1) -> None:
     cfg = sim.config
     d.line([pt((0, 0)), pt((0, cfg.height)), pt((cfg.width, cfg.height)),
             pt((cfg.width, 0))], fill=wall, width=width)
@@ -35,6 +36,11 @@ def _draw_board(d: ImageDraw.ImageDraw, sim: PinballSim, pt, wall, flip,
         a, b = cfg.guide_points(side)
         d.line([pt(a), pt(b)], fill=wall, width=width)
         d.polygon([pt(v) for v in cfg.sling_verts(side)], outline=wall)
+    for i, (tx, ty) in enumerate(sim.targets):
+        if sim.target_alive[i]:
+            cx, cy = pt((tx, ty))
+            tr = sim.config.target_radius * (pt((1, 0))[0] - pt((0, 0))[0])
+            d.ellipse([cx - tr, cy - tr, cx + tr, cy + tr], fill=target_color)
     for i, body in enumerate(sim.flipper_bodies):
         side = +1 if i == 0 else -1
         tip = body.local_to_world((side * cfg.flipper_length, 0))
@@ -52,7 +58,8 @@ def render_frame(sim: PinballSim, size: int = 64) -> np.ndarray:
     img = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(img)
     ball_px = max(BALL_MIN_PX, cfg.ball_radius * sx)
-    _draw_board(d, sim, pt, COLOR_WALL, COLOR_FLIPPER, ball_px, COLOR_BALL)
+    _draw_board(d, sim, pt, COLOR_WALL, COLOR_FLIPPER, ball_px, COLOR_BALL,
+                COLOR_TARGET)
     return np.asarray(img)
 
 
@@ -65,7 +72,7 @@ def render_debug(sim: PinballSim, scale: int = 5) -> Image.Image:
     d = ImageDraw.Draw(img)
     ball_px = max(BALL_MIN_PX * scale, cfg.ball_radius * sx)
     _draw_board(d, sim, pt, (200, 200, 200), (255, 160, 40), ball_px,
-                (255, 255, 255), width=max(1, scale // 2))
+                (255, 255, 255), (80, 200, 220), width=max(1, scale // 2))
     x, y = sim.ball_pos
     d.text((6, 6), f"balle: ({x:.0f}, {y:.0f})  v={sim.ball_speed:.0f}",
            fill=(150, 220, 150))
