@@ -51,7 +51,9 @@ notebooks/…            # T30 (01-03), T31 (04), T32 (05), T33 (06, nouveau)
 ## §A — En-tête double-mode standard des notebooks (référencé par T30-T33)
 
 Cellule 1 (installation) puis cellule 2 (chemins), à adapter par notebook pour
-les noms de dossiers :
+les noms de dossiers. **Exception voulue : le notebook 01 n'utilise QUE la
+cellule 1** — il ne lit ni n'écrit aucune donnée, monter Drive lui imposerait
+une autorisation Colab inutile :
 
 ```python
 # %%
