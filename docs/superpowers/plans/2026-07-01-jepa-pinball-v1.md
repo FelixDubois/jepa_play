@@ -113,11 +113,13 @@ dependencies = [
     "pymunk>=7.0",
     "numpy",
     "pillow",
-    "torch",
+    "torch>=2.3",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "jupytext"]
+# préinstallés sur Colab ; nécessaires en local pour exécuter les notebooks
+notebooks = ["matplotlib", "ipywidgets"]
 
 [tool.setuptools]
 packages = ["pinball", "jepa"]
@@ -131,6 +133,7 @@ testpaths = ["tests"]
 ```gitignore
 __pycache__/
 *.egg-info/
+.pytest_cache/
 .venv/
 venv/
 data/
@@ -613,7 +616,7 @@ class PinballSim:
 - [ ] **Step 4: Vérifier que les tests passent**
 
 Run: `pytest tests/test_sim.py -v`
-Expected: 8 PASS.
+Expected: 7 PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -984,6 +987,8 @@ class PinballEnv:
         self._done = False
         frame = render_frame(self.sim, self.obs_size)
         self._prev_frame = frame
+        # premier pas : frames dupliquées — état jamais vu à l'entraînement
+        # (les datasets commencent à t=1) ; une seule décision par épisode
         return np.stack([frame, frame])
 
     def step(self, action: int) -> tuple[np.ndarray, dict]:
@@ -1086,7 +1091,6 @@ if IN_COLAB and not os.path.exists("jepa_play"):
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
 
 # %%
-import numpy as np
 import matplotlib.pyplot as plt
 from pinball.config import BoardConfig
 from pinball.env import PinballEnv
@@ -1134,8 +1138,6 @@ plt.suptitle("L'observation du modèle : le mouvement est dans la paire"); plt.s
 # ## Une partie en vidéo (politique : ne rien faire)
 
 # %%
-from PIL import Image
-
 def episode_gif(env, policy, path, seed=None, max_steps=450):
     """Joue un épisode et l'enregistre en GIF (rendu debug)."""
     env.reset(seed=seed)
@@ -1304,6 +1306,19 @@ def test_random_play_produces_ball_losses(tmp_path):
     episodes = load_episodes(tmp_path)
     losses = sum(bool(ep["ball_lost"]) for ep in episodes)
     assert losses >= 1
+
+
+def test_load_episodes_shares_shard_memory(tmp_path):
+    # NpzFile décompresse à CHAQUE accès : sans hoisting des lectures, chaque
+    # épisode retiendrait sa propre copie du shard entier (~64× le dataset en
+    # RAM → OOM Colab). Les épisodes d'un même shard partagent une base.
+    env = PinballEnv(BoardConfig(max_episode_steps=30), seed=0)
+    policy = StickyRandomPolicy(np.random.default_rng(0))
+    collect_dataset(env, policy, n_transitions=120, out_dir=tmp_path,
+                    shard_episodes=64)
+    episodes = load_episodes(tmp_path)
+    assert len(episodes) >= 2
+    assert episodes[0]["frames"].base is episodes[1]["frames"].base
 ```
 
 - [ ] **Step 2: Vérifier l'échec**
@@ -1410,24 +1425,33 @@ def load_episodes(data_dir) -> list[dict]:
     episodes = []
     for path in sorted(Path(data_dir).glob("shard_*.npz")):
         with np.load(path) as z:
-            f_ofs = a_ofs = 0
-            for fc, ac, lost in zip(z["frame_counts"], z["action_counts"],
-                                    z["ball_lost"]):
-                episodes.append({
-                    "frames": z["frames"][f_ofs:f_ofs + fc],
-                    "actions": z["actions"][a_ofs:a_ofs + ac],
-                    "ball_pos": z["ball_pos"][f_ofs:f_ofs + fc],
-                    "ball_lost": bool(lost),
-                })
-                f_ofs += fc
-                a_ofs += ac
+            # Lire chaque tableau UNE seule fois : NpzFile décompresse à
+            # CHAQUE accès, et chaque tranche retiendrait alors sa propre
+            # copie du shard entier (base du view) — ~64× le dataset en RAM,
+            # OOM garanti sur Colab à l'échelle 100k transitions.
+            frames = z["frames"]
+            actions = z["actions"]
+            ball_pos = z["ball_pos"]
+            frame_counts = z["frame_counts"]
+            action_counts = z["action_counts"]
+            ball_lost = z["ball_lost"]
+        f_ofs = a_ofs = 0
+        for fc, ac, lost in zip(frame_counts, action_counts, ball_lost):
+            episodes.append({
+                "frames": frames[f_ofs:f_ofs + fc],
+                "actions": actions[a_ofs:a_ofs + ac],
+                "ball_pos": ball_pos[f_ofs:f_ofs + fc],
+                "ball_lost": bool(lost),
+            })
+            f_ofs += fc
+            a_ofs += ac
     return episodes
 ```
 
 - [ ] **Step 4: Vérifier que les tests passent**
 
 Run: `pytest tests/test_collect.py -v`
-Expected: 3 PASS.
+Expected: 4 PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -2554,6 +2578,9 @@ def train_danger_head(jepa, episodes, k_danger: int = 10, epochs: int = 3,
     # split PAR ÉPISODE : deux pas voisins sont quasi identiques, un split
     # par transition ferait fuir le train dans la validation
     n_val = max(1, int(len(episodes) * val_fraction))
+    if len(episodes) - n_val < 1:
+        raise ValueError("il faut au moins 2 épisodes pour un split "
+                         "train/validation par épisode")
     train_eps, val_eps = episodes[:-n_val], episodes[-n_val:]
     z_train, y_train = _encode_dataset(jepa, DangerDataset(train_eps, k_danger),
                                        batch_size, dev)
@@ -2906,7 +2933,7 @@ def record_gif(env, policy, path, seed: int | None = None,
     frames[0].save(path, save_all=True, append_images=frames[1:],
                    duration=66, loop=0)
     return {"steps": info["steps"], "ball_lost": info["ball_lost"],
-            "stuck": info["stuck"]}
+            "stuck": info["stuck"], "truncated": not info["done"]}
 ```
 
 - [ ] **Step 2: Smoke test (baselines uniquement, sans modèle entraîné)**
@@ -3029,7 +3056,8 @@ for name, pol in [("agent", agent),
                   ("toujours", AlwaysPressed()),
                   ("flapper", PeriodicFlapper())]:
     r = record_gif(env, pol, f"{name}.gif", seed=2026)
-    print(f"{name:10s}: {r['steps']} pas ({r['steps']/15:.1f} s)")
+    trunc = " (GIF tronqué à 30 s)" if r["truncated"] else ""
+    print(f"{name:10s}: {r['steps']} pas ({r['steps']/15:.1f} s){trunc}")
 
 # %%
 from IPython.display import Image as IPImage, display
@@ -3088,6 +3116,36 @@ with torch.no_grad():
         cost += torch.sigmoid(head.to(agent.device)(z))
 for a, label in enumerate(["rien", "gauche", "droit", "les deux"]):
     print(f"action constante « {label:9s} » : danger imaginé = {cost[a]:.3f}")
+
+# %% [markdown]
+# ## Test de scénario (spec §12) : balle fonçant vers le drain, côté gauche
+#
+# On cherche un état critique réel — balle basse à gauche, en train de
+# descendre — et on regarde ce que l'agent décide. Nuance : un MPC peut
+# LÉGITIMEMENT retarder la frappe d'un pas ou deux (frapper trop tôt est
+# souvent pire) ; l'important est de voir le flipper gauche actionné au
+# moment critique. Si ce n'est pas le cas, inspecter les GIF et l'AUC.
+
+# %%
+state = None
+for seed in range(300):
+    env_s = PinballEnv(seed=seed)
+    obs_s = env_s.reset()
+    for _ in range(900):
+        obs_s, info_s = env_s.step(0)
+        if info_s["done"]:
+            break
+        (x_s, y_s), (vx_s, vy_s) = info_s["ball_pos"], info_s["ball_vel"]
+        if x_s < 200 and y_s < 280 and vy_s < -100:
+            state = (obs_s, x_s, y_s, vx_s, vy_s)
+            break
+    if state is not None:
+        break
+assert state is not None, "aucun état critique trouvé — élargir la plage de seeds"
+obs_s, x_s, y_s, vx_s, vy_s = state
+choice = agent.plan(obs_s)
+print(f"état critique : balle à ({x_s:.0f}, {y_s:.0f}), vitesse ({vx_s:.0f}, {vy_s:.0f})")
+print(f"action choisie = {choice} → flipper gauche actionné : {bool(choice & 1)}")
 
 # %% [markdown]
 # ## Si l'agent ne bat pas les baselines
