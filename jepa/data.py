@@ -52,6 +52,9 @@ class DangerDataset(Dataset):
     label = 1 si la balle sera perdue dans les k_danger prochains pas.
     Les labels sont fabriqués automatiquement depuis la fin des épisodes —
     aucune annotation humaine.
+
+    Version V1 historique — préférer MultiLabelDataset (danger honnête
+    incluant les fins stuck).
     """
 
     def __init__(self, episodes: list[dict], k_danger: int = 10):

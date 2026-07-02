@@ -1,9 +1,11 @@
 """Planification MPC dans l'espace latent : l'agent « imagine et choisit ».
 
 À chaque pas : générer des séquences d'actions candidates, les dérouler
-DANS LE LATENT avec le prédicteur (aucune physique !), sommer le danger
-prédit, exécuter la première action de la meilleure séquence, replanifier.
-Aucun apprentissage ici — tout le savoir est dans le world model et la tête.
+DANS LE LATENT avec le prédicteur (aucune physique !), sommer un coût —
+danger seul, ou multi-objectif (danger − hauteur − cible) si les têtes
+optionnelles hauteur/cible sont fournies —, exécuter la première action de
+la meilleure séquence, replanifier. Aucun apprentissage ici — tout le savoir
+est dans le world model et les têtes.
 """
 from __future__ import annotations
 

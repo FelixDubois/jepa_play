@@ -1,8 +1,11 @@
-"""Tête danger : P(balle perdue dans les k prochains pas | latent).
+"""Têtes d'objectif (danger, hauteur, cible, position) + entraînement partagé.
 
-C'est elle qui donne un SENS au futur imaginé : le prédicteur déroule des
-latents, la tête danger dit lesquels mènent au drain. Entraînement supervisé
-classique — les labels sortent gratuitement du dataset (fins d'épisodes).
+Ce sont elles qui donnent un SENS au futur imaginé : le prédicteur déroule des
+latents, et chaque tête dit ce qui s'y joue — danger (drain), hauteur, contact
+avec une cible, position sur le plateau. `train_objective_heads` les entraîne
+toutes les quatre sur un seul passage d'encodage. Entraînement supervisé
+classique — les labels sortent gratuitement du dataset (fins d'épisodes,
+positions, contacts).
 """
 from __future__ import annotations
 

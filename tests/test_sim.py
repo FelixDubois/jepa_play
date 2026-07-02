@@ -104,6 +104,7 @@ def test_sample_target_positions_respects_zone_and_separation():
                 dx = pts[i][0] - pts[j][0]
                 dy = pts[i][1] - pts[j][1]
                 assert (dx * dx + dy * dy) ** 0.5 >= cfg.target_min_sep
+    assert sample_target_positions(cfg, rng, 0) == []   # n=0 : liste vide
 
 
 def test_target_hit_detected_and_removed():

@@ -4,6 +4,6 @@ __pycache__/
 .venv/
 venv/
 data/
-checkpoints/
+checkpoints*/
 .ipynb_checkpoints/
 *.gif

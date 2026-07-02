@@ -19,6 +19,8 @@ def sample_target_positions(config: BoardConfig, rng: np.random.Generator,
                             n: int) -> list[tuple[float, float]]:
     """n positions de cibles dans la zone sûre, séparées d'au moins
     target_min_sep (rejet, 500 essais max)."""
+    if n == 0:
+        return []
     pts: list[tuple[float, float]] = []
     for _ in range(500):
         p = (float(rng.uniform(*config.target_zone_x)),

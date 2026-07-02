@@ -217,8 +217,8 @@ print(f"action choisie = {choice} → flipper gauche actionné : {bool(choice & 
 # ## Si l'agent ne bat pas les baselines
 #
 # Diagnostiquer DANS L'ORDRE (ne pas toucher au planificateur d'abord) :
-# 0. `auc_target` bas (< 0,75) ? Normal au premier tour — le hasard touche peu
-#    de cibles ; c'est l'itération (notebook 05) qui l'améliore.
+# 0. `auc_target` bas (< 0,75) ou NaN ? normal au premier tour — le hasard
+#    touche peu de cibles ; c'est l'itération (notebook 05) qui l'améliore.
 # 1. AUC de la tête danger < 0,8 → revoir la tête / le dataset ;
 # 2. `pred_mse` ne bat pas `copy_mse` à 8 pas (notebook 03) → world model
 #    à améliorer : plus d'epochs, plus de données ;

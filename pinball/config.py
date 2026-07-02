@@ -76,7 +76,7 @@ class BoardConfig:
     target_elasticity: float = 1.2
     target_zone_x: tuple[float, float] = (70.0, 470.0)
     target_zone_y: tuple[float, float] = (420.0, 860.0)
-    target_min_sep: float = 100.0
+    target_min_sep: float = 100.0    # > 2×(r_balle+r_cible+marge) : un seul contact par sous-pas
     target_hit_margin: float = 2.0
 
     # ---------- géométrie dérivée ----------
