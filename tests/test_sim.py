@@ -146,3 +146,27 @@ def test_ball_bounces_off_target():
 def test_no_targets_by_default():
     sim, _ = make_sim()
     assert sim.targets == [] and sim.consume_hits() == []
+
+
+def test_dead_target_stops_blocking_after_step():
+    # une cible morte ne doit plus être un obstacle : sans retrait de la
+    # forme, elle resterait un mur INVISIBLE (absent du rendu, présent en
+    # physique) et le world model verrait la balle rebondir sur du vide
+    from pinball.config import hard_board
+    cfg = hard_board()
+    sim = PinballSim(cfg, np.random.default_rng(0), targets=[(270.0, 600.0)])
+    sim.ball.position = (270.0, 700.0)
+    sim.ball.velocity = (0.0, -300.0)
+    for _ in range(60):
+        sim.step_control()
+        if sim.consume_hits():
+            break
+    assert sim.target_alive == [False]
+    # balle relancée au même endroit : elle TRAVERSE (aucun rebond fantôme)
+    sim.ball.position = (270.0, 700.0)
+    sim.ball.velocity = (0.0, -400.0)
+    max_vy = -1e9
+    for _ in range(6):          # assez pour traverser la zone, sans atteindre
+        sim.step_control()      # les slingshots plus bas
+        max_vy = max(max_vy, sim.ball.velocity.y)
+    assert max_vy < 50.0

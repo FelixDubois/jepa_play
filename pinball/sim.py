@@ -48,6 +48,7 @@ class PinballSim:
         self.target_alive = [True] * len(self.targets)
         self._target_shapes: list[pymunk.Shape] = []
         self._pending_hits: list[int] = []
+        self._dead_to_remove: list[int] = []
         for (x, y) in self.targets:
             s = pymunk.Circle(self.space.static_body, config.target_radius,
                               offset=(x, y))
@@ -132,10 +133,14 @@ class PinballSim:
             if v.length > cfg.max_ball_speed:
                 self.ball.velocity = v * (cfg.max_ball_speed / v.length)
             self._check_target_hits()
+        self._flush_dead_targets()
 
     def _check_target_hits(self) -> None:
         # par SOUS-PAS : au pas de contrôle, une balle rapide (≤147 u / pas)
-        # traverserait la zone de contact (~84 u) entre deux vérifications
+        # traverserait la zone de contact (~84 u) entre deux vérifications.
+        # La cible détectée reste SOLIDE jusqu'à la fin du pas de contrôle
+        # (la détection à marge +2 précède le contact : le rebond doit avoir
+        # lieu), puis _flush_dead_targets la retire — jamais de mur invisible.
         if not self.targets:
             return
         cfg = self.config
@@ -145,6 +150,12 @@ class PinballSim:
             if self.target_alive[i] and math.hypot(bx - tx, by - ty) <= reach:
                 self.target_alive[i] = False
                 self._pending_hits.append(i)
+                self._dead_to_remove.append(i)
+
+    def _flush_dead_targets(self) -> None:
+        for i in self._dead_to_remove:
+            self.space.remove(self._target_shapes[i])
+        self._dead_to_remove = []
 
     def consume_hits(self) -> list[int]:
         """Indices des cibles touchées depuis le dernier appel."""
