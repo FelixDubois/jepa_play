@@ -2783,6 +2783,12 @@ git commit -m "feat: planificateur MPC (random shooting persistant + constantes)
 - Consumes: `PinballEnv`, `StickyRandomPolicy`, `MPCPlanner`, `render_debug`.
 - Produces:
   - `AlwaysPressed()` — politique baseline : `__call__(obs) -> 3`, `reset()`.
+  - `PeriodicFlapper(half_period: int = 15)` — baseline « jongleur aveugle » :
+    battement périodique des deux flippers sans regarder l'écran (action 3
+    pendant half_period pas, puis 0, en boucle). Découvert en développement :
+    ce rythme garde souvent la balle en jeu 60 s sur cette table — le
+    graphique final doit le montrer pour être honnête sur ce que l'agent
+    apprend au-delà d'un rythme.
   - `run_episode(env, policy, seed: int | None = None) -> dict` —
     `{"steps": int, "ball_lost": bool, "stuck": bool}`.
   - `evaluate(env, policy, n_episodes: int = 50, seed0: int = 1000) -> dict` —
@@ -2815,6 +2821,25 @@ class AlwaysPressed:
 
     def __call__(self, obs) -> int:
         return 3
+
+
+class PeriodicFlapper:
+    """Baseline « jongleur aveugle » : battement des deux flippers à période
+    fixe, sans jamais regarder l'écran. Sur cette table, ce rythme garde
+    souvent la balle en jeu très longtemps : si l'agent ne fait pas mieux,
+    c'est qu'il n'exploite pas la vision."""
+
+    def __init__(self, half_period: int = 15):
+        self.half_period = half_period
+        self.reset()
+
+    def reset(self) -> None:
+        self._step = 0
+
+    def __call__(self, obs) -> int:
+        action = 3 if (self._step // self.half_period) % 2 == 0 else 0
+        self._step += 1
+        return action
 
 
 def run_episode(env, policy, seed: int | None = None) -> dict:
@@ -2863,16 +2888,18 @@ def record_gif(env, policy, path, seed: int | None = None,
 Run: `python -c "
 from pinball.collect import StickyRandomPolicy
 from pinball.env import PinballEnv
-from jepa.eval import AlwaysPressed, evaluate
+from jepa.eval import AlwaysPressed, PeriodicFlapper, evaluate
 import numpy as np
 env = PinballEnv(seed=0)
 r = evaluate(env, StickyRandomPolicy(np.random.default_rng(0)), n_episodes=8)
 print('aléatoire :', round(r['survival_s'], 1), 's')
 a = evaluate(env, AlwaysPressed(), n_episodes=8)
 print('toujours appuyé :', round(a['survival_s'], 1), 's')
+f = evaluate(env, PeriodicFlapper(), n_episodes=8)
+print('flapper aveugle :', round(f['survival_s'], 1), 's')
 "`
-Expected: deux durées de survie s'affichent (ordre de grandeur : 4-10 s
-chacune), sans erreur.
+Expected: trois durées de survie s'affichent, sans erreur (aléatoire et
+toujours appuyé : ~4-10 s ; flapper aveugle : souvent bien plus long).
 
 - [ ] **Step 3: Commit**
 
@@ -2961,47 +2988,56 @@ print(f"AUC heuristique -hauteur (triche) : {auc(-heights, labels):.3f}")
 # %% [markdown]
 # ## L'agent joue
 #
-# D'abord un coup d'œil qualitatif : trois GIF côte à côte.
+# D'abord un coup d'œil qualitatif : quatre GIF côte à côte.
 
 # %%
 from pinball.env import PinballEnv
 from pinball.collect import StickyRandomPolicy
-from jepa.eval import AlwaysPressed, evaluate, record_gif
+from jepa.eval import AlwaysPressed, PeriodicFlapper, evaluate, record_gif
 from jepa.planner import MPCPlanner
 
 agent = MPCPlanner(jepa, head)
 env = PinballEnv()
 for name, pol in [("agent", agent),
                   ("aleatoire", StickyRandomPolicy(np.random.default_rng(0))),
-                  ("toujours", AlwaysPressed())]:
+                  ("toujours", AlwaysPressed()),
+                  ("flapper", PeriodicFlapper())]:
     r = record_gif(env, pol, f"{name}.gif", seed=2026)
     print(f"{name:10s}: {r['steps']} pas ({r['steps']/15:.1f} s)")
 
 # %%
 from IPython.display import Image as IPImage, display
-for name in ("agent", "aleatoire", "toujours"):
+for name in ("agent", "aleatoire", "toujours", "flapper"):
     print(name); display(IPImage(f"{name}.gif"))
 
 # %% [markdown]
 # ## Le graphique de la V1 : 50 épisodes, seeds appariées
 #
 # **Critère d'acceptation** : la survie moyenne de l'agent doit dépasser
-# NETTEMENT les deux baselines (spec §2 et §12).
+# NETTEMENT l'aléatoire et « toujours appuyé » (spec §2 et §12).
+#
+# On ajoute un quatrième concurrent, découvert pendant le développement :
+# le **flapper aveugle**, qui bat des deux flippers en rythme sans jamais
+# regarder l'écran — et qui survit étonnamment longtemps sur cette table.
+# Il ne fait pas partie du critère d'acceptation, mais c'est le test
+# d'honnêteté du projet : si l'agent ne fait pas mieux que lui, c'est qu'il
+# a appris un rythme, pas à VOIR la balle.
 
 # %%
 import matplotlib.pyplot as plt
 results = {}
 for name, pol in [("agent JEPA", agent),
                   ("aléatoire", StickyRandomPolicy(np.random.default_rng(0))),
-                  ("toujours appuyé", AlwaysPressed())]:
+                  ("toujours appuyé", AlwaysPressed()),
+                  ("flapper aveugle", PeriodicFlapper())]:
     results[name] = evaluate(env, pol, n_episodes=50)
     print(f"{name:16s}: {results[name]['survival_s']:5.1f} s en moyenne, "
           f"médiane {results[name]['median_steps']/15:.1f} s")
 
-fig, ax = plt.subplots(figsize=(7, 4))
+fig, ax = plt.subplots(figsize=(8, 4))
 names = list(results)
 ax.bar(names, [results[n]["survival_s"] for n in names],
-       color=["tab:green", "tab:gray", "tab:gray"])
+       color=["tab:green", "tab:gray", "tab:gray", "tab:orange"])
 ax.set_ylabel("survie moyenne (s)")
 ax.set_title("V1 : l'agent JEPA contre les baselines (50 épisodes)")
 plt.show()
