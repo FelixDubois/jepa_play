@@ -11,7 +11,7 @@ import numpy as np
 
 from .config import BoardConfig
 from .render import render_frame
-from .sim import PinballSim
+from .sim import PinballSim, sample_target_positions
 
 
 class PinballEnv:
@@ -28,10 +28,16 @@ class PinballEnv:
     def reset(self, seed: int | None = None) -> np.ndarray:
         if seed is not None:
             self._rng = np.random.default_rng(seed)
-        self.sim = PinballSim(self.config, self._rng)
+        lo, hi = self.config.n_targets_range
+        targets = None
+        if hi > 0:
+            n = int(self._rng.integers(lo, hi + 1))
+            targets = sample_target_positions(self.config, self._rng, n)
+        self.sim = PinballSim(self.config, self._rng, targets=targets)
         self._steps = 0
         self._stuck_count = 0
         self._nudges = 0
+        self._targets_hit = 0
         self._done = False
         frame = render_frame(self.sim, self.obs_size)
         self._prev_frame = frame
@@ -50,6 +56,11 @@ class PinballEnv:
         self.sim.step_control()
         self._steps += 1
 
+        hits = self.sim.consume_hits()
+        self._targets_hit += len(hits)
+        targets_total = len(self.sim.targets)
+        completed = targets_total > 0 and self._targets_hit == targets_total
+
         x, y = self.sim.ball_pos
         ball_lost = y < self.config.drain_y
         nudged = False
@@ -67,7 +78,7 @@ class PinballEnv:
         else:
             self._stuck_count = 0
 
-        self._done = ball_lost or stuck or self._steps >= self.config.max_episode_steps
+        self._done = ball_lost or stuck or completed or self._steps >= self.config.max_episode_steps
         frame = render_frame(self.sim, self.obs_size)
         obs = np.stack([self._prev_frame, frame])
         self._prev_frame = frame
@@ -81,5 +92,9 @@ class PinballEnv:
             "nudged": nudged,
             "steps": self._steps,
             "done": self._done,
+            "targets_total": targets_total,
+            "targets_hit": self._targets_hit,
+            "hit_now": len(hits),
+            "completed": completed,
         }
         return obs, info

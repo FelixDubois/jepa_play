@@ -97,3 +97,45 @@ def test_custom_config_is_used():
     for _ in range(5):
         _, info = env.step(0)
     assert info["done"] and info["steps"] == 5
+
+
+def test_default_table_has_no_targets():
+    env = PinballEnv(seed=0)
+    env.reset()
+    _, info = env.step(0)
+    assert info["targets_total"] == 0 and not info["completed"]
+
+
+def test_targets_sampled_and_deterministic():
+    from pinball.config import hard_board
+    env = PinballEnv(hard_board(), seed=3)
+    env.reset()
+    a = list(env.sim.targets)
+    assert 1 <= len(a) <= 3
+    env2 = PinballEnv(hard_board(), seed=3)
+    env2.reset()
+    assert list(env2.sim.targets) == a       # même seed -> mêmes cibles
+    env3 = PinballEnv(hard_board(), seed=4)
+    env3.reset()
+    assert list(env3.sim.targets) != a       # seed différente -> différentes
+
+
+def test_completion_ends_episode():
+    # une seule cible, balle téléportée dessus : l'épisode finit en victoire
+    from pinball.config import hard_board
+    env = PinballEnv(hard_board(), seed=0)
+    env.reset()
+    tx, ty = env.sim.targets[0]
+    for i in range(1, len(env.sim.targets)):        # éteindre les autres
+        env.sim.target_alive[i] = False
+        env.sim.space.remove(env.sim._target_shapes[i])
+        env._targets_hit += 1
+    env.sim.ball.position = (tx, ty + 60)
+    env.sim.ball.velocity = (0.0, -300.0)
+    for _ in range(30):
+        _, info = env.step(0)
+        if info["done"]:
+            break
+    assert info["completed"] and info["done"]
+    assert not info["ball_lost"]
+    assert info["targets_hit"] == info["targets_total"]
