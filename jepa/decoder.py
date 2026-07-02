@@ -46,7 +46,7 @@ def train_decoder(jepa, episodes, epochs: int = 3, batch_size: int = 256,
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=True)
     if len(dl) == 0:
         raise ValueError("pas assez de données pour un batch de décodeur")
-    dec = Decoder().to(dev)
+    dec = Decoder(z_dim=jepa.z_dim).to(dev)
     opt = torch.optim.AdamW(dec.parameters(), lr=lr)
     for epoch in range(epochs):
         total, nb = 0.0, 0

@@ -18,27 +18,41 @@ def _device(device: str | None) -> str:
     return device or ("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def _legacy_checkpoint_error() -> ValueError:
+    return ValueError(
+        "checkpoint d'une version antérieure (architecture inconnue) — "
+        "réentraîner via le notebook 03")
+
+
 def train_jepa(episodes, out_dir, epochs: int = 10, k: int = 8,
                batch_size: int = 256, lr: float = 3e-4, tau: float = 0.996,
                device: str | None = None, resume: bool = True,
-               num_workers: int = 2):
+               num_workers: int = 2, gamma: float | None = 0.7):
     dev = _device(device)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     ckpt_path = out / "jepa.pt"
 
     model = JEPA().to(dev)
-    opt = torch.optim.AdamW(
-        [p for p in model.parameters() if p.requires_grad], lr=lr)
     history: list[dict] = []
     start_epoch = 0
+    ckpt = None
     if resume and ckpt_path.exists():
         ckpt = torch.load(ckpt_path, map_location=dev, weights_only=True)
+        if "hparams" not in ckpt:
+            raise _legacy_checkpoint_error()
+        # checkpoint AUTO-DESCRIPTIF : on reconstruit l'architecture exacte
+        # depuis les hparams embarqués, pas depuis les défauts du code
+        model = JEPA(**ckpt["hparams"]).to(dev)
         model.load_state_dict(ckpt["model"])
-        opt.load_state_dict(ckpt["optimizer"])
         history = ckpt["history"]
         start_epoch = ckpt["epoch"]
         print(f"reprise du checkpoint : epoch {start_epoch}")
+
+    opt = torch.optim.AdamW(
+        [p for p in model.parameters() if p.requires_grad], lr=lr)
+    if ckpt is not None:
+        opt.load_state_dict(ckpt["optimizer"])
 
     ds = WindowDataset(episodes, k=k)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True,
@@ -58,7 +72,7 @@ def train_jepa(episodes, out_dir, epochs: int = 10, k: int = 8,
             frames = batch["frames"].to(dev, non_blocking=True)
             actions = batch["actions"].to(dev, non_blocking=True)
             with torch.autocast(device_type="cuda", enabled=use_amp):
-                loss, metrics = model.loss(frames, actions)
+                loss, metrics = model.loss(frames, actions, gamma=gamma)
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.step(opt)
@@ -80,14 +94,19 @@ def train_jepa(episodes, out_dir, epochs: int = 10, k: int = 8,
         torch.save({"model": model.state_dict(),
                     "optimizer": opt.state_dict(),
                     "epoch": epoch + 1,
-                    "history": history}, ckpt_path)
+                    "history": history,
+                    "hparams": model.hparams}, ckpt_path)
     return model, history
 
 
 def load_jepa(ckpt_path, device: str | None = None) -> JEPA:
     dev = _device(device)
     ckpt = torch.load(ckpt_path, map_location=dev, weights_only=True)
-    model = JEPA().to(dev)
+    if "hparams" not in ckpt:
+        raise _legacy_checkpoint_error()
+    # checkpoint AUTO-DESCRIPTIF : reconstruction à l'identique, même pour
+    # des dimensions non standard (cf. test_checkpoint_self_describing)
+    model = JEPA(**ckpt["hparams"]).to(dev)
     model.load_state_dict(ckpt["model"])
     model.eval()
     return model

@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 import torch
+from jepa.model import JEPA
 from jepa.train import load_jepa, train_jepa
 
 
@@ -63,3 +64,30 @@ def test_train_raises_on_empty_loader(tmp_path):
     with pytest.raises(ValueError):
         train_jepa(eps, tmp_path, epochs=1, k=4, batch_size=64,
                    device="cpu", num_workers=0)
+
+
+def test_checkpoint_self_describing(tmp_path):
+    # un checkpoint embarque son architecture : load_jepa reconstruit
+    # à l'identique même pour des dimensions non standard
+    eps = [moving_dot_episode(T=15, seed=0)]
+    import jepa.train as jt
+    torch.manual_seed(0)
+    small = JEPA(z_dim=128, enc_channels=(16, 32, 64, 128),
+                 pred_hidden=256, a_dim=16)
+    opt = torch.optim.AdamW(
+        [p for p in small.parameters() if p.requires_grad], lr=1e-3)
+    torch.save({"model": small.state_dict(), "optimizer": opt.state_dict(),
+                "epoch": 1, "history": [], "hparams": small.hparams},
+               tmp_path / "jepa.pt")
+    loaded = jt.load_jepa(tmp_path / "jepa.pt", device="cpu")
+    assert loaded.z_dim == 128
+    obs = torch.randint(0, 255, (2, 2, 64, 64), dtype=torch.uint8)
+    assert loaded.encode(obs).shape == (2, 128)
+
+
+def test_load_jepa_rejects_legacy_checkpoint(tmp_path):
+    torch.save({"model": {}, "optimizer": {}, "epoch": 1, "history": []},
+               tmp_path / "jepa.pt")
+    with pytest.raises(ValueError):
+        jt_load = __import__("jepa.train", fromlist=["load_jepa"]).load_jepa
+        jt_load(tmp_path / "jepa.pt", device="cpu")

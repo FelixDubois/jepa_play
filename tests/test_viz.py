@@ -33,7 +33,7 @@ def test_train_decoder_reduces_loss(capsys):
 
 def test_rollout_latents_shape():
     zs = rollout_latents(JEPA(), fake_ep(), t0=2, k=8)
-    assert zs.shape == (8, 256)
+    assert zs.shape == (8, 384)
 
 
 def test_decoder_learns_bright_pixels():
@@ -66,7 +66,7 @@ def test_decoder_learns_bright_pixels():
 
 def test_overlays_return_images():
     ep = fake_ep()
-    img1 = trajectory_overlay(JEPA(), PositionProbe(), ep, t0=2, k=8, upscale=4)
+    img1 = trajectory_overlay(JEPA(), PositionProbe(384), ep, t0=2, k=8, upscale=4)
     assert img1.size == (256, 256) and img1.mode == "RGB"
-    img2 = imagination_strip(JEPA(), Decoder(), ep, t0=2, k=8, upscale=2)
+    img2 = imagination_strip(JEPA(), Decoder(384), ep, t0=2, k=8, upscale=2)
     assert img2.size == (8 * 128, 3 * 128) and img2.mode == "RGB"

@@ -6,24 +6,24 @@ def test_encoder_shapes_and_uint8():
     enc = Encoder()
     x8 = torch.randint(0, 255, (4, 2, 64, 64), dtype=torch.uint8)
     z = enc(x8)
-    assert z.shape == (4, 256)
+    assert z.shape == (4, 384)
     xf = x8.float() / 255.0
     assert torch.allclose(enc(xf), z, atol=1e-5)
 
 
 def test_encoder_param_count():
     n = sum(p.numel() for p in Encoder().parameters())
-    assert 500_000 < n < 4_000_000  # "petit CNN" de la spec (~1-2M)
+    assert 1_000_000 < n < 8_000_000  # BIG : encodeur ≈ 3,2 M
 
 
 def test_predictor_shapes_and_action_sensitivity():
     torch.manual_seed(0)
     pred = Predictor()
-    z = torch.randn(4, 256)
+    z = torch.randn(4, 384)
     a0 = torch.zeros(4, dtype=torch.long)
     a3 = torch.full((4,), 3, dtype=torch.long)
     out0, out3 = pred(z, a0), pred(z, a3)
-    assert out0.shape == (4, 256)
+    assert out0.shape == (4, 384)
     assert not torch.allclose(out0, out3)  # l'action doit influencer le futur
 
 
@@ -67,7 +67,7 @@ def test_encode_routes_online_and_target():
     jepa = JEPA()
     obs = torch.randint(0, 255, (3, 2, 64, 64), dtype=torch.uint8)
     z_on, z_tg = jepa.encode(obs), jepa.encode_target(obs)
-    assert z_on.shape == z_tg.shape == (3, 256)
+    assert z_on.shape == z_tg.shape == (3, 384)
     assert not z_on.requires_grad and not z_tg.requires_grad
     # perturber l'encodeur ONLINE seul : encode() change, encode_target() non
     with torch.no_grad():
@@ -75,3 +75,14 @@ def test_encode_routes_online_and_target():
             p.add_(0.1)
     assert not torch.allclose(jepa.encode(obs), z_on)
     assert torch.allclose(jepa.encode_target(obs), z_tg)
+
+
+def test_loss_gamma_weighting_differs():
+    torch.manual_seed(0)
+    jepa = JEPA()
+    frames = torch.randint(0, 255, (3, 10, 64, 64), dtype=torch.uint8)
+    actions = torch.randint(0, 4, (3, 8))
+    l_g, _ = jepa.loss(frames, actions, gamma=0.7)
+    l_u, _ = jepa.loss(frames, actions, gamma=None)
+    assert l_g.isfinite() and l_u.isfinite()
+    assert not torch.isclose(l_g, l_u)   # la pondération change bien la perte
