@@ -115,3 +115,39 @@ def load_episodes(data_dir) -> list[dict]:
             f_ofs += fc
             a_ofs += ac
     return episodes
+
+
+class MixedPolicy:
+    """Politique d'itération : l'agent joue, entrecoupé de RAFALES d'actions
+    aléatoires collantes.
+
+    Pourquoi ? Pour réentraîner le world model sur les états que visite le BON
+    jeu (l'agent), tout en gardant assez de variété pour ne pas figer le
+    modèle sur une seule trajectoire. Une action aléatoire isolée ne sert à
+    rien (flipper qui vibre) : on explore par rafales maintenues, comme la
+    politique de collecte initiale.
+    """
+
+    def __init__(self, primary, rng: np.random.Generator,
+                 burst_prob: float = 0.03,
+                 burst_range: tuple[int, int] = (3, 15)):
+        self.primary = primary
+        self._rng = rng
+        self.burst_prob = burst_prob
+        self.burst_range = burst_range
+        self.reset()
+
+    def reset(self) -> None:
+        self.primary.reset()
+        self._burst_left = 0
+        self._burst_action = 0
+
+    def __call__(self, obs) -> int:
+        if self._burst_left <= 0 and self._rng.random() < self.burst_prob:
+            self._burst_action = int(self._rng.integers(4))
+            self._burst_left = int(self._rng.integers(self.burst_range[0],
+                                                      self.burst_range[1] + 1))
+        if self._burst_left > 0:
+            self._burst_left -= 1
+            return self._burst_action
+        return self.primary(obs)

@@ -59,3 +59,51 @@ def test_load_episodes_shares_shard_memory(tmp_path):
     episodes = load_episodes(tmp_path)
     assert len(episodes) >= 2
     assert episodes[0]["frames"].base is episodes[1]["frames"].base
+
+
+class _ConstantPolicy:
+    """Politique factice : action constante, trace les appels et les reset."""
+
+    def __init__(self, action=3):
+        self.action = action
+        self.calls = 0
+        self.resets = 0
+
+    def reset(self):
+        self.resets += 1
+
+    def __call__(self, obs):
+        self.calls += 1
+        return self.action
+
+
+def test_mixed_policy_mostly_plays_primary():
+    from pinball.collect import MixedPolicy
+    primary = _ConstantPolicy(action=3)
+    policy = MixedPolicy(primary, np.random.default_rng(0))
+    actions = [policy(None) for _ in range(3000)]
+    # les rafales tirent uniformément dans {0..3} : ~3/4 des pas de rafale
+    # diffèrent de l'action du primaire -> part observable ≈ 21 % × 3/4
+    frac_other = sum(a != 3 for a in actions) / len(actions)
+    assert 0.05 < frac_other < 0.35
+    # hors rafale, c'est bien le primaire qui décide
+    assert primary.calls > len(actions) * 0.5
+
+
+def test_mixed_policy_bursts_are_sticky():
+    from pinball.collect import MixedPolicy
+    policy = MixedPolicy(_ConstantPolicy(action=3), np.random.default_rng(1),
+                         burst_prob=1.0, burst_range=(5, 5))
+    # burst_prob=1 : rafale permanente, par blocs de 5 actions identiques
+    actions = [policy(None) for _ in range(20)]
+    for i in range(0, 20, 5):
+        assert len(set(actions[i:i + 5])) == 1
+
+
+def test_mixed_policy_reset_propagates():
+    from pinball.collect import MixedPolicy
+    primary = _ConstantPolicy()
+    policy = MixedPolicy(primary, np.random.default_rng(0))
+    policy.reset()
+    policy.reset()
+    assert primary.resets >= 2
