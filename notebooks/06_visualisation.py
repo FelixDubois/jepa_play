@@ -39,7 +39,7 @@ from jepa.heads import PositionProbe
 
 episodes = load_episodes(DATA_DIR)
 jepa = load_jepa(CKPT_DIR / "jepa.pt")
-probe = PositionProbe()
+probe = PositionProbe(jepa.z_dim)
 probe.load_state_dict(torch.load(CKPT_DIR / "pos.pt", weights_only=True))
 probe.eval()
 print(f"{len(episodes)} épisodes, modèle et sonde chargés")

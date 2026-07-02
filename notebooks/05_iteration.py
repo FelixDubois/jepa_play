@@ -61,8 +61,8 @@ from jepa.planner import MPCPlanner
 
 episodes_v1 = load_episodes(DATA_V1)
 jepa_v1 = load_jepa(CKPT_V1 / "jepa.pt")
-heads_v1 = {"danger": DangerHead(), "height": HeightHead(),
-            "target": TargetHead(), "pos": PositionProbe()}
+heads_v1 = {"danger": DangerHead(jepa_v1.z_dim), "height": HeightHead(jepa_v1.z_dim),
+            "target": TargetHead(jepa_v1.z_dim), "pos": PositionProbe(jepa_v1.z_dim)}
 for name, h in heads_v1.items():
     h.load_state_dict(torch.load(CKPT_V1 / f"{name}.pt", weights_only=True))
     h.eval()

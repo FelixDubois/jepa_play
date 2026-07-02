@@ -136,6 +136,46 @@ plt.xlabel("horizon (pas)"); plt.ylabel("MSE latente"); plt.legend()
 plt.title("Erreur de prédiction selon l'horizon"); plt.show()
 
 # %% [markdown]
+# ## Diagnostic n°4 : la balle est-elle LISIBLE dans le latent ?
+#
+# Les diagnostics 1-3 peuvent être bons alors que la position précise de la
+# balle s'est érodée du latent (vécu : cibles trop saillantes, puis
+# sur-entraînement). Test direct : une petite sonde apprend à lire (x, y)
+# depuis les latents gelés — son erreur sur des épisodes de validation dit
+# ce que le latent contient VRAIMENT. Référence : un devin qui répond
+# toujours la position moyenne.
+
+# %%
+from jepa.data import MultiLabelDataset
+from jepa.heads import PositionProbe
+
+def readability(episodes_subset):
+    ds = MultiLabelDataset(episodes_subset)
+    idx = np.linspace(0, len(ds) - 1, min(3000, len(ds)), dtype=int)
+    obs = torch.stack([ds[int(i)]["obs"] for i in idx])
+    pos = torch.stack([ds[int(i)]["pos"] for i in idx])
+    with torch.no_grad():
+        z = torch.cat([model_cpu.encode_target(obs[j:j + 256])
+                       for j in range(0, len(obs), 256)])
+    return z, pos
+
+z_tr, p_tr = readability(episodes[:-40])
+z_va, p_va = readability(episodes[-40:])
+torch.manual_seed(0)
+probe = PositionProbe(model_cpu.z_dim)
+popt = torch.optim.AdamW(probe.parameters(), lr=1e-3)
+for _ in range(400):
+    perm = torch.randperm(len(z_tr))[:512]
+    loss_p = ((probe(z_tr[perm]) - p_tr[perm]) ** 2).mean()
+    popt.zero_grad(); loss_p.backward(); popt.step()
+probe.eval()
+with torch.no_grad():
+    mae = (probe(z_va) - p_va).abs().mean().item()
+naif = (p_tr.mean(0) - p_va).abs().mean().item()
+print(f"lisibilité de la balle : MAE = {mae:.3f} (devin naïf : {naif:.3f})")
+print("bon signe si < 0.08 ; au-delà de 0.12, le latent a perdu la balle.")
+
+# %% [markdown]
 # Si les trois diagnostics sont bons, le modèle du monde est prêt.
 # Prochaine étape (notebook 04) : s'en servir pour JOUER — tête danger,
 # puis planification dans l'imagination.
