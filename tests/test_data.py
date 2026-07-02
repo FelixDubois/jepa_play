@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from jepa.data import DangerDataset, WindowDataset, stack_obs
+from jepa.data import DangerDataset, WindowDataset, stack_obs, MultiLabelDataset
 
 
 def fake_episode(T, ball_lost, seed=0):
@@ -11,6 +11,19 @@ def fake_episode(T, ball_lost, seed=0):
         "ball_pos": rng.uniform(0, 500, (T + 1, 2)).astype(np.float32),
         "ball_lost": ball_lost,
     }
+
+
+def labeled_episode(T, ball_lost=False, stuck=False, completed=False,
+                    hit_at=(), seed=0):
+    ep = fake_episode(T, ball_lost, seed)
+    ep["stuck"] = stuck
+    ep["completed"] = completed
+    ep["targets_total"] = 2
+    hits = np.zeros(T, dtype=np.uint8)
+    for h in hit_at:
+        hits[h] = 1
+    ep["hits"] = hits
+    return ep
 
 
 def test_window_dataset_shapes_and_count():
@@ -51,3 +64,42 @@ def test_danger_labels():
     ds2 = DangerDataset([fake_episode(T, False)], k_danger=10)
     labels2 = np.array([ds2[i]["label"].item() for i in range(len(ds2))])
     assert labels2.sum() == 0
+
+
+def test_multilabel_danger_honest():
+    # perdu -> queue dangereuse ; stuck -> queue dangereuse ;
+    # complété -> AUCUN danger ; timeout -> aucun danger
+    for kw, expected_tail in [(dict(ball_lost=True), 10),
+                              (dict(stuck=True), 10),
+                              (dict(completed=True), 0),
+                              (dict(), 0)]:
+        ds = MultiLabelDataset([labeled_episode(30, **kw)], k_danger=10)
+        labels = np.array([ds[i]["danger"].item() for i in range(len(ds))])
+        assert labels.sum() == expected_tail, kw
+
+
+def test_multilabel_height_and_pos():
+    ep = labeled_episode(20)
+    ds = MultiLabelDataset([ep], board_size=(540.0, 960.0))
+    item = ds[0]                       # t = 1
+    assert abs(item["height"].item() - ep["ball_pos"][1, 1] / 960.0) < 1e-6
+    assert np.allclose(item["pos"].numpy(),
+                       ep["ball_pos"][1] / np.array([540.0, 960.0]),
+                       atol=1e-6)
+    assert 0.0 <= item["height"].item() <= 1.0
+
+
+def test_multilabel_target_window():
+    # contact au pas 15 (hits[14]=1) : positifs pour t = 5..14 (k=10)
+    ds = MultiLabelDataset([labeled_episode(30, hit_at=(14,))], k_target=10)
+    labels = np.array([ds[i]["target"].item() for i in range(len(ds))])
+    assert labels.sum() == 10
+    assert labels[4] == 1.0 and labels[13] == 1.0   # t=5 et t=14 (index t-1)
+    assert labels[3] == 0.0 and labels[14] == 0.0
+
+
+def test_multilabel_backward_compatible_without_hits():
+    ds = MultiLabelDataset([fake_episode(20, True)])   # pas de clés v2
+    item = ds[0]
+    assert item["target"].item() == 0.0
+    assert item["danger"].item() in (0.0, 1.0)

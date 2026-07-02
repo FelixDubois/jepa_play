@@ -76,3 +76,49 @@ class DangerDataset(Dataset):
                 np.ascontiguousarray(ep["frames"][t - 1:t + 1])),
             "label": torch.tensor(1.0 if dangerous else 0.0),
         }
+
+
+class MultiLabelDataset(Dataset):
+    """Observations + tous les labels d'objectif, fabriqués depuis `info`.
+
+    - danger HONNÊTE : seules les fins PERDANTES (ball_lost ou stuck) marquent
+      leur queue — une victoire n'est pas un danger (leçon du reward hacking
+      de l'itération 1 : « éviter de perdre » sans nuance récompensait le
+      piégeage de la balle) ;
+    - hauteur et position normalisées (objectif continu + sonde de visu) ;
+    - cible : un contact aura-t-il lieu dans les k prochains pas ?
+    """
+
+    def __init__(self, episodes: list[dict], k_danger: int = 10,
+                 k_target: int = 10,
+                 board_size: tuple[float, float] = (540.0, 960.0)):
+        self.episodes = episodes
+        self.k_danger = k_danger
+        self.k_target = k_target
+        self.board = np.asarray(board_size, dtype=np.float32)
+        self.index: list[tuple[int, int]] = []
+        for e, ep in enumerate(episodes):
+            for t in range(1, len(ep["actions"]) + 1):
+                self.index.append((e, t))
+
+    def __len__(self) -> int:
+        return len(self.index)
+
+    def __getitem__(self, i: int) -> dict:
+        e, t = self.index[i]
+        ep = self.episodes[e]
+        T = len(ep["actions"])
+        end_bad = bool(ep["ball_lost"]) or bool(ep.get("stuck", False))
+        danger = end_bad and t >= T - self.k_danger + 1
+        hits = ep.get("hits")
+        target = bool(hits is not None
+                      and hits[t:t + self.k_target].sum() > 0)
+        pos = ep["ball_pos"][t] / self.board
+        return {
+            "obs": torch.from_numpy(
+                np.ascontiguousarray(ep["frames"][t - 1:t + 1])),
+            "danger": torch.tensor(1.0 if danger else 0.0),
+            "height": torch.tensor(float(pos[1])),
+            "pos": torch.from_numpy(pos.astype(np.float32)),
+            "target": torch.tensor(1.0 if target else 0.0),
+        }
