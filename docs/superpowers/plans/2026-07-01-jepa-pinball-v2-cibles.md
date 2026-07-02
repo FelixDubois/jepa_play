@@ -34,7 +34,7 @@ détection par distance — 10 % de cibles touchées par le hasard, 0 nouveau bl
 ```
 pinball/config.py      # T21 — champs cibles (+ retrait du champ bumpers inutilisé)
 pinball/sim.py         # T21 — sample_target_positions, cibles dans PinballSim
-pinball/render.py      # T22 — cibles au rendu (gris 150 / debug coloré)
+pinball/render.py      # T22 — cibles au rendu (gris 110 / debug coloré)
 pinball/env.py         # T23 — tirage au reset, fin "completed", info enrichi
 pinball/collect.py     # T24 — shards + hits/targets_total/completed/stuck
 jepa/data.py           # T25 — MultiLabelDataset (danger honnête, hauteur, cible, pos)
