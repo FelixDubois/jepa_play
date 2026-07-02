@@ -92,8 +92,11 @@ else:
 - `PinballSim(config, rng, targets: list[tuple[float, float]] | None = None)` ;
   attributs `targets` (positions), `target_alive` (list[bool]) ;
   `consume_hits() -> list[int]` — indices touchés depuis le dernier appel
-  (détection PAR SOUS-PAS dans `step_control`, accumulée dans `_pending_hits` ;
-  la cible touchée est retirée de l'espace ET marquée morte).
+  (détection PAR SOUS-PAS dans `step_control`, accumulée dans `_pending_hits`).
+  **Retrait DIFFÉRÉ** : la cible détectée est marquée morte immédiatement mais
+  reste solide jusqu'à la FIN du pas de contrôle courant (le rebond du contact
+  a lieu — la détection à marge +2 précède le contact physique), puis sa forme
+  est retirée de l'espace avant le rendu : plus jamais d'obstacle fantôme.
 
 - [ ] **Step 1: Tests qui échouent** — ajouter à `tests/test_config.py` :
 
@@ -169,6 +172,30 @@ def test_ball_bounces_off_target():
 def test_no_targets_by_default():
     sim, _ = make_sim()
     assert sim.targets == [] and sim.consume_hits() == []
+
+
+def test_dead_target_stops_blocking_after_step():
+    # une cible morte ne doit plus être un obstacle : sans retrait de la
+    # forme, elle resterait un mur INVISIBLE (absent du rendu, présent en
+    # physique) et le world model verrait la balle rebondir sur du vide
+    from pinball.config import hard_board
+    cfg = hard_board()
+    sim = PinballSim(cfg, np.random.default_rng(0), targets=[(270.0, 600.0)])
+    sim.ball.position = (270.0, 700.0)
+    sim.ball.velocity = (0.0, -300.0)
+    for _ in range(60):
+        sim.step_control()
+        if sim.consume_hits():
+            break
+    assert sim.target_alive == [False]
+    # balle relancée au même endroit : elle TRAVERSE (aucun rebond fantôme)
+    sim.ball.position = (270.0, 700.0)
+    sim.ball.velocity = (0.0, -400.0)
+    max_vy = -1e9
+    for _ in range(6):          # assez pour traverser la zone, sans atteindre
+        sim.step_control()      # les slingshots plus bas
+        max_vy = max(max_vy, sim.ball.velocity.y)
+    assert max_vy < 50.0
 ```
 
 - [ ] **Step 2: Vérifier l'échec** — `pytest tests/test_config.py tests/test_sim.py -v`
@@ -233,18 +260,18 @@ def sample_target_positions(config: BoardConfig, rng: np.random.Generator,
             self._target_shapes.append(s)
 ```
 
-Dans `step_control`, après le plafond de vitesse de CHAQUE sous-pas :
-
-```python
-            self._check_target_hits()
-```
-
-et les deux méthodes :
+Dans `step_control` : `self._check_target_hits()` après le plafond de vitesse
+de CHAQUE sous-pas, et `self._flush_dead_targets()` en TOUTE FIN de méthode
+(après la boucle des sous-pas). Initialiser aussi `self._dead_to_remove: list[int] = []`
+dans `__init__`. Les trois méthodes :
 
 ```python
     def _check_target_hits(self) -> None:
         # par SOUS-PAS : au pas de contrôle, une balle rapide (≤147 u / pas)
-        # traverserait la zone de contact (~84 u) entre deux vérifications
+        # traverserait la zone de contact (~84 u) entre deux vérifications.
+        # La cible détectée reste SOLIDE jusqu'à la fin du pas de contrôle
+        # (la détection à marge +2 précède le contact : le rebond doit avoir
+        # lieu), puis _flush_dead_targets la retire — jamais de mur invisible.
         if not self.targets:
             return
         cfg = self.config
@@ -253,8 +280,13 @@ et les deux méthodes :
         for i, (tx, ty) in enumerate(self.targets):
             if self.target_alive[i] and math.hypot(bx - tx, by - ty) <= reach:
                 self.target_alive[i] = False
-                self.space.remove(self._target_shapes[i])
                 self._pending_hits.append(i)
+                self._dead_to_remove.append(i)
+
+    def _flush_dead_targets(self) -> None:
+        for i in self._dead_to_remove:
+            self.space.remove(self._target_shapes[i])
+        self._dead_to_remove = []
 
     def consume_hits(self) -> list[int]:
         """Indices des cibles touchées depuis le dernier appel."""
@@ -262,7 +294,7 @@ et les deux méthodes :
         return hits
 ```
 
-- [ ] **Step 4: Suite complète** — `pytest` → 57 + 5 = 62 PASS.
+- [ ] **Step 4: Suite complète** — `pytest` → 57 + 6 = 63 PASS.
 - [ ] **Step 5: Commit** — `feat: cibles aléatoires dans le simulateur (placement sûr, contact par sous-pas)`
 
 ---
@@ -320,7 +352,7 @@ paramètre `target_color` à la signature et :
 `COLOR_TARGET = 150` en constante de module ; `render_frame` passe
 `COLOR_TARGET`, `render_debug` passe `(80, 200, 220)`.
 
-- [ ] **Step 4:** `pytest` → 62 + 2 = 64 PASS. **Step 5: Commit** —
+- [ ] **Step 4:** `pytest` → 63 + 2 = 65 PASS. **Step 5: Commit** —
   `feat: rendu des cibles (gris 150 / cyan debug), disparition à l'extinction`
 
 ---
@@ -410,7 +442,7 @@ dans `step()` (après `step_control`) :
 `done` gagne `or completed` ; `info` gagne les 4 clés. Imports :
 `from .sim import PinballSim, sample_target_positions`.
 
-- [ ] **Step 4:** `pytest` → 64 + 3 = 67 PASS (les 8 tests env existants, sur la
+- [ ] **Step 4:** `pytest` → 65 + 3 = 68 PASS (les 8 tests env existants, sur la
   table par défaut sans cibles, ne changent pas). **Step 5: Commit** —
   `feat: cibles tirées au reset, fin d'épisode en victoire, info enrichi`
 
@@ -474,7 +506,7 @@ Dans `_write_shard` : `hits=np.concatenate(...)` (offsets = ceux des actions),
 Dans `load_episodes` : lire les quatre tableaux UNE fois (même hoisting
 anti-OOM), découper `hits` avec `a_ofs/action_counts`, restituer les scalaires.
 
-- [ ] **Step 4:** `pytest` → 67 + 2 = 69 PASS. **Step 5: Commit** —
+- [ ] **Step 4:** `pytest` → 68 + 2 = 70 PASS. **Step 5: Commit** —
   `feat: shards v2 — contacts par pas, cibles totales, fins completed/stuck`
 
 ---
@@ -606,7 +638,7 @@ class MultiLabelDataset(Dataset):
         }
 ```
 
-- [ ] **Step 4:** `pytest` → 69 + 4 = 73 PASS. **Step 5: Commit** —
+- [ ] **Step 4:** `pytest` → 70 + 4 = 74 PASS. **Step 5: Commit** —
   `feat: MultiLabelDataset — danger honnête, hauteur, position, contact imminent`
 
 ---
@@ -687,7 +719,7 @@ batch) ; une boucle d'epochs unique qui optimise les 4 têtes côte à côte
 latents) ; AUC par la fonction `auc` existante, MAE = moyenne des |écarts|
 sur la validation ; imprimer un résumé en français.
 
-- [ ] **Step 4:** `pytest` → 73 + 2 = 75 PASS. **Step 5: Commit** —
+- [ ] **Step 4:** `pytest` → 74 + 2 = 76 PASS. **Step 5: Commit** —
   `feat: têtes hauteur/cible/position + entraînement groupé sur latents partagés`
 
 ---
@@ -773,7 +805,7 @@ dans la boucle de `plan` :
                 cost -= self.w_target * torch.sigmoid(self.target_head(z))
 ```
 
-- [ ] **Step 4:** `pytest` → 75 + 3 = 78 PASS. **Step 5: Commit** —
+- [ ] **Step 4:** `pytest` → 76 + 3 = 79 PASS. **Step 5: Commit** —
   `feat: coût MPC multi-objectifs (danger, hauteur, cible), rétro-compatible`
 
 ---
@@ -996,7 +1028,7 @@ def imagination_strip(jepa, decoder, ep: dict, t0: int, k: int = 8,
     return strip
 ```
 
-- [ ] **Step 4:** `pytest` → 78 + 4 = 82 PASS. **Step 5: Commit** —
+- [ ] **Step 4:** `pytest` → 79 + 4 = 83 PASS. **Step 5: Commit** —
   `feat: décodeur d'imagination + superpositions trajectoire/imagination`
 
 ---
@@ -1068,7 +1100,7 @@ nouvelles clés depuis le dernier `info` ; `evaluate` calcule :
         "mean_height": float(np.mean([r["mean_height"] for r in results])),
 ```
 
-- [ ] **Step 4:** `pytest` → 82 + 3 = 85 PASS. **Step 5: Commit** —
+- [ ] **Step 4:** `pytest` → 83 + 3 = 86 PASS. **Step 5: Commit** —
   `feat: éval V2 — taux de victoire, temps de complétion, hauteur moyenne`
 
 ---
@@ -1138,7 +1170,7 @@ print("device :", "cuda" if torch.cuda.is_available() else
   reprend automatiquement. »
 
 Vérifications : `jupytext --to ipynb notebooks/01_simulateur.py notebooks/02_collecte.py notebooks/03_jepa.py` ;
-`grep -L "IN_COLAB" notebooks/0[123]*.py` vide ; suite pytest inchangée (85 PASS).
+`grep -L "IN_COLAB" notebooks/0[123]*.py` vide ; suite pytest inchangée (86 PASS).
 
 Commit : `docs: notebooks 01-03 — double-mode Colab/local, table à cibles, chemins targets_v1`
 
@@ -1409,7 +1441,7 @@ else:
 ```
 
 Vérifications : `jupytext --to ipynb notebooks/06_visualisation.py` ; structure
-(nombre de cellules affiché) ; suite pytest inchangée (85 PASS).
+(nombre de cellules affiché) ; suite pytest inchangée (86 PASS).
 
 Commit : `docs: notebook 06 — superpositions prédit/réel et décodeur d'imagination`
 
