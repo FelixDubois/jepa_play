@@ -4,9 +4,14 @@
 # Dans ce notebook : construire la table, comprendre ses paramètres, regarder
 # la physique tourner, et jouer manuellement pour vérifier que le flipper est
 # agréable. **Aucun apprentissage ici** — d'abord, un monde qui fonctionne.
-#
-# Exécution locale : lancer Jupyter depuis la **racine du repo**, avec le
-# noyau du venv du projet (`.venv`) — voir le README pour la mise en place.
+
+# %%
+import importlib.util, subprocess, sys, os
+IN_COLAB = importlib.util.find_spec("google.colab") is not None
+if IN_COLAB and not os.path.exists("jepa_play"):
+    subprocess.run(["git", "clone", "https://github.com/FelixDubois/jepa_play.git"], check=True)
+    os.chdir("jepa_play")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
 
 # %%
 import matplotlib.pyplot as plt
@@ -18,7 +23,8 @@ from pinball.render import render_debug
 # ## La table est une configuration
 #
 # Tout le plateau est décrit par une dataclass. Changer la table = changer des
-# nombres. Regardons la table par défaut, puis une variante.
+# nombres. Regardons la table par défaut, puis LA table officielle des expériences : `hard_board()` —
+# drain ouvert, flippers courts, et 1 à 3 cibles placées au hasard à chaque partie (les plots ronds).
 
 # %%
 cfg = BoardConfig()
@@ -28,11 +34,14 @@ plt.figure(figsize=(5, 5)); plt.imshow(render_debug(env.sim)); plt.axis("off")
 plt.title("Table par défaut"); plt.show()
 
 # %%
-large = BoardConfig(drain_gap=120.0, flipper_length=90.0)
-env2 = PinballEnv(large, seed=0)
+from pinball.config import hard_board
+hard = hard_board()
+env2 = PinballEnv(hard, seed=0)
 env2.reset()
 plt.figure(figsize=(5, 5)); plt.imshow(render_debug(env2.sim)); plt.axis("off")
-plt.title("Variante : drain large, flippers courts (plus difficile)"); plt.show()
+plt.title("hard_board : la table OFFICIELLE (drain ouvert, flippers courts, cibles)")
+plt.show()
+print(f"cette partie a {len(env2.sim.targets)} cible(s), placées au hasard")
 
 # %% [markdown]
 # ## Ce que voit le modèle : 64×64, 2 frames
@@ -118,6 +127,7 @@ advance(None)
 # - La table est **paramétrable** (`BoardConfig`) : gravité, flippers, drain...
 # - La physique est **réelle** (pymunk) : la balle est frappée, pas téléportée.
 # - Le modèle ne verra QUE l'image 64×64×2 — jamais les positions exactes.
+# - Les CIBLES (plots gris) changent de place à chaque partie : impossible de jouer sans regarder l'image.
 #
 # Prochaine étape (notebook 02) : générer le dataset d'expérience en laissant
 # une politique aléatoire jouer des milliers de parties, toute seule.

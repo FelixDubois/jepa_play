@@ -8,12 +8,28 @@
 #
 # Les expériences tournent sur la TABLE DURE (hard_board) : drain ouvert,
 # flippers courts — les stratégies aveugles ne survivent pas ici.
+# Nouveauté V2 : chaque partie a 1 à 3 CIBLES aléatoires — les toucher toutes gagne la partie.
+# Le hasard en touche ~10 % : assez pour apprendre ce qu'est un contact.
+
+# %%
+import importlib.util, subprocess, sys, os
+IN_COLAB = importlib.util.find_spec("google.colab") is not None
+if IN_COLAB and not os.path.exists("jepa_play"):
+    subprocess.run(["git", "clone", "https://github.com/FelixDubois/jepa_play.git"], check=True)
+    os.chdir("jepa_play")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
 
 # %%
 from pathlib import Path
+if IN_COLAB:
+    from google.colab import drive
+    drive.mount("/content/drive")
+    ROOT = Path("/content/drive/MyDrive/jepa_pinball")
+else:
+    ROOT = Path(".")
 
-DATA_DIR = Path("data/hard_v1")
-print("Dataset →", DATA_DIR.resolve())
+DATA_DIR = ROOT / "data/targets_v1"
+print("Dataset →", DATA_DIR)
 
 # %%
 import numpy as np
@@ -56,6 +72,11 @@ fig, axes = plt.subplots(1, 2, figsize=(10, 3.5))
 axes[0].hist(lengths, bins=40); axes[0].set_title("Durées d'épisodes (pas)")
 axes[1].hist(np.concatenate([ep["ball_pos"][:, 1] for ep in episodes]), bins=40)
 axes[1].set_title("Hauteurs de balle visitées"); plt.show()
+
+hits_eps = np.array([ep["hits"].sum() for ep in episodes])
+wins = np.array([ep["completed"] for ep in episodes])
+print(f"épisodes avec ≥1 contact de cible : {100*(hits_eps>0).mean():.0f} %")
+print(f"victoires chanceuses : {100*wins.mean():.1f} %")
 
 # %% [markdown]
 # ## À quoi ressemble une transition ?
