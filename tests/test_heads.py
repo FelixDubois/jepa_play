@@ -39,3 +39,14 @@ def test_train_danger_head_learns_separable_signal():
     head, val_auc = train_danger_head(jepa, eps, epochs=10, batch_size=64,
                                       device="cpu")
     assert val_auc > 0.9
+
+
+def test_train_danger_head_clamps_large_batch():
+    # batch_size > nb d'échantillons : sans clamp, la boucle interne ne ferait
+    # AUCUN pas d'optimiseur et retournerait une tête aléatoire, en silence
+    # (mesuré : AUC 0.10 sans clamp, 1.00 avec, seed 0).
+    torch.manual_seed(0)
+    eps = [separable_episode(30, s % 2 == 0, s) for s in range(20)]
+    head, val_auc = train_danger_head(JEPA(), eps, epochs=10,
+                                      batch_size=10_000, device="cpu")
+    assert val_auc > 0.9

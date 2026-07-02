@@ -80,6 +80,8 @@ def train_danger_head(jepa, episodes, k_danger: int = 10, epochs: int = 3,
     opt = torch.optim.AdamW(head.parameters(), lr=lr)
 
     z_train, y_train = z_train.to(dev), y_train.to(dev)
+    # clamp : sinon batch_size > données => zéro pas d'optimiseur, en silence
+    batch_size = min(batch_size, len(z_train))
     for _ in range(epochs):
         perm = torch.randperm(len(z_train), device=dev)
         for i in range(0, len(perm) - batch_size + 1, batch_size):
