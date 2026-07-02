@@ -78,7 +78,8 @@ from pinball.env import PinballEnv
 N_TRANSITIONS_V2 = 50_000
 
 if DATA_V2.exists() and list(DATA_V2.glob("shard_*.npz")):
-    print("Dataset v2 déjà présent — collecte sautée.")
+    print("Dataset v2 déjà présent — collecte sautée (supprimer data/hard_v2 "
+          "ET checkpoints_hard_v2 pour refaire l'itération).")
 else:
     env = PinballEnv(hard_board(), seed=123)
     explorer = MixedPolicy(agent_v1, np.random.default_rng(123))
@@ -98,6 +99,10 @@ print(f"durée moyenne des épisodes : aléatoire {lengths_v1.mean()/15:.1f} s "
 # Astuce : `train_jepa` reprend automatiquement du checkpoint présent dans son
 # dossier. On copie donc le checkpoint V1 dans un nouveau dossier et on demande
 # 6 epochs de PLUS — il repart de l'epoch 10, sur les données mixtes.
+#
+# ⚠ Pour REFAIRE l'itération de zéro (p. ex. après avoir changé la part
+# d'exploration) : supprimer `data/hard_v2` ET `checkpoints_hard_v2` — sinon
+# la reprise repart de l'epoch 16 et n'entraîne RIEN de plus.
 
 # %%
 from jepa.train import train_jepa
@@ -134,9 +139,12 @@ from pinball.collect import StickyRandomPolicy
 from jepa.eval import AlwaysPressed, PeriodicFlapper, evaluate
 
 env = PinballEnv(hard_board())
+# instance fraîche pour l'éval : le RNG interne d'agent_v1 a été consommé par
+# la collecte — une instance neuve garantit la reproductibilité entre exécutions
+agent_v1_eval = MPCPlanner(jepa_v1, head_v1, n_candidates=256)
 results = {}
 for name, pol in [("agent V2", agent_v2),
-                  ("agent V1", agent_v1),
+                  ("agent V1", agent_v1_eval),
                   ("aléatoire", StickyRandomPolicy(np.random.default_rng(0))),
                   ("toujours appuyé", AlwaysPressed()),
                   ("flapper aveugle", PeriodicFlapper())]:

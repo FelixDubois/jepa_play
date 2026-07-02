@@ -126,6 +126,10 @@ class MixedPolicy:
     modèle sur une seule trajectoire. Une action aléatoire isolée ne sert à
     rien (flipper qui vibre) : on explore par rafales maintenues, comme la
     politique de collecte initiale.
+
+    Note : le primaire n'est PAS consulté pendant une rafale — il doit donc
+    replanifier de zéro à chaque pas (c'est le cas du MPCPlanner) plutôt que
+    dépendre d'un état interne suivant le flux d'observations.
     """
 
     def __init__(self, primary, rng: np.random.Generator,
