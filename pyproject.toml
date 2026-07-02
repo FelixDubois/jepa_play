@@ -11,11 +11,13 @@ dependencies = [
     "pymunk>=7.0",
     "numpy",
     "pillow",
-    "torch",
+    "torch>=2.3",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "jupytext"]
+# préinstallés sur Colab ; nécessaires en local pour exécuter les notebooks
+notebooks = ["matplotlib", "ipywidgets"]
 
 [tool.setuptools]
 packages = ["pinball", "jepa"]

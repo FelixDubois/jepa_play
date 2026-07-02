@@ -66,6 +66,9 @@ def train_danger_head(jepa, episodes, k_danger: int = 10, epochs: int = 3,
     # split PAR ÉPISODE : deux pas voisins sont quasi identiques, un split
     # par transition ferait fuir le train dans la validation
     n_val = max(1, int(len(episodes) * val_fraction))
+    if len(episodes) - n_val < 1:
+        raise ValueError("il faut au moins 2 épisodes pour un split "
+                         "train/validation par épisode")
     train_eps, val_eps = episodes[:-n_val], episodes[-n_val:]
     z_train, y_train = _encode_dataset(jepa, DangerDataset(train_eps, k_danger),
                                        batch_size, dev)

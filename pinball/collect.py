@@ -94,15 +94,24 @@ def load_episodes(data_dir) -> list[dict]:
     episodes = []
     for path in sorted(Path(data_dir).glob("shard_*.npz")):
         with np.load(path) as z:
-            f_ofs = a_ofs = 0
-            for fc, ac, lost in zip(z["frame_counts"], z["action_counts"],
-                                    z["ball_lost"]):
-                episodes.append({
-                    "frames": z["frames"][f_ofs:f_ofs + fc],
-                    "actions": z["actions"][a_ofs:a_ofs + ac],
-                    "ball_pos": z["ball_pos"][f_ofs:f_ofs + fc],
-                    "ball_lost": bool(lost),
-                })
-                f_ofs += fc
-                a_ofs += ac
+            # Lire chaque tableau UNE seule fois : NpzFile décompresse à
+            # CHAQUE accès, et chaque tranche retiendrait alors sa propre
+            # copie du shard entier (base du view) — ~64× le dataset en RAM,
+            # OOM garanti sur Colab à l'échelle 100k transitions.
+            frames = z["frames"]
+            actions = z["actions"]
+            ball_pos = z["ball_pos"]
+            frame_counts = z["frame_counts"]
+            action_counts = z["action_counts"]
+            ball_lost = z["ball_lost"]
+        f_ofs = a_ofs = 0
+        for fc, ac, lost in zip(frame_counts, action_counts, ball_lost):
+            episodes.append({
+                "frames": frames[f_ofs:f_ofs + fc],
+                "actions": actions[a_ofs:a_ofs + ac],
+                "ball_pos": ball_pos[f_ofs:f_ofs + fc],
+                "ball_lost": bool(lost),
+            })
+            f_ofs += fc
+            a_ofs += ac
     return episodes

@@ -77,4 +77,4 @@ def record_gif(env, policy, path, seed: int | None = None,
     frames[0].save(path, save_all=True, append_images=frames[1:],
                    duration=66, loop=0)
     return {"steps": info["steps"], "ball_lost": info["ball_lost"],
-            "stuck": info["stuck"]}
+            "stuck": info["stuck"], "truncated": not info["done"]}

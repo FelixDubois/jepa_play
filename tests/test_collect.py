@@ -46,3 +46,16 @@ def test_random_play_produces_ball_losses(tmp_path):
     episodes = load_episodes(tmp_path)
     losses = sum(bool(ep["ball_lost"]) for ep in episodes)
     assert losses >= 1
+
+
+def test_load_episodes_shares_shard_memory(tmp_path):
+    # NpzFile décompresse à CHAQUE accès : sans hoisting des lectures, chaque
+    # épisode retiendrait sa propre copie du shard entier (~64× le dataset en
+    # RAM → OOM Colab). Les épisodes d'un même shard partagent une base.
+    env = PinballEnv(BoardConfig(max_episode_steps=30), seed=0)
+    policy = StickyRandomPolicy(np.random.default_rng(0))
+    collect_dataset(env, policy, n_transitions=120, out_dir=tmp_path,
+                    shard_episodes=64)
+    episodes = load_episodes(tmp_path)
+    assert len(episodes) >= 2
+    assert episodes[0]["frames"].base is episodes[1]["frames"].base

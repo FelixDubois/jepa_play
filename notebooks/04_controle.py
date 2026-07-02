@@ -78,7 +78,8 @@ for name, pol in [("agent", agent),
                   ("toujours", AlwaysPressed()),
                   ("flapper", PeriodicFlapper())]:
     r = record_gif(env, pol, f"{name}.gif", seed=2026)
-    print(f"{name:10s}: {r['steps']} pas ({r['steps']/15:.1f} s)")
+    trunc = " (GIF tronqué à 30 s)" if r["truncated"] else ""
+    print(f"{name:10s}: {r['steps']} pas ({r['steps']/15:.1f} s){trunc}")
 
 # %%
 from IPython.display import Image as IPImage, display
@@ -137,6 +138,36 @@ with torch.no_grad():
         cost += torch.sigmoid(head.to(agent.device)(z))
 for a, label in enumerate(["rien", "gauche", "droit", "les deux"]):
     print(f"action constante « {label:9s} » : danger imaginé = {cost[a]:.3f}")
+
+# %% [markdown]
+# ## Test de scénario (spec §12) : balle fonçant vers le drain, côté gauche
+#
+# On cherche un état critique réel — balle basse à gauche, en train de
+# descendre — et on regarde ce que l'agent décide. Nuance : un MPC peut
+# LÉGITIMEMENT retarder la frappe d'un pas ou deux (frapper trop tôt est
+# souvent pire) ; l'important est de voir le flipper gauche actionné au
+# moment critique. Si ce n'est pas le cas, inspecter les GIF et l'AUC.
+
+# %%
+state = None
+for seed in range(300):
+    env_s = PinballEnv(seed=seed)
+    obs_s = env_s.reset()
+    for _ in range(900):
+        obs_s, info_s = env_s.step(0)
+        if info_s["done"]:
+            break
+        (x_s, y_s), (vx_s, vy_s) = info_s["ball_pos"], info_s["ball_vel"]
+        if x_s < 200 and y_s < 280 and vy_s < -100:
+            state = (obs_s, x_s, y_s, vx_s, vy_s)
+            break
+    if state is not None:
+        break
+assert state is not None, "aucun état critique trouvé — élargir la plage de seeds"
+obs_s, x_s, y_s, vx_s, vy_s = state
+choice = agent.plan(obs_s)
+print(f"état critique : balle à ({x_s:.0f}, {y_s:.0f}), vitesse ({vx_s:.0f}, {vy_s:.0f})")
+print(f"action choisie = {choice} → flipper gauche actionné : {bool(choice & 1)}")
 
 # %% [markdown]
 # ## Si l'agent ne bat pas les baselines

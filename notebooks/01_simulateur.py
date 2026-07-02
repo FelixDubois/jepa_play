@@ -15,7 +15,6 @@ if IN_COLAB and not os.path.exists("jepa_play"):
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
 
 # %%
-import numpy as np
 import matplotlib.pyplot as plt
 from pinball.config import BoardConfig
 from pinball.env import PinballEnv
@@ -63,8 +62,6 @@ plt.suptitle("L'observation du modèle : le mouvement est dans la paire"); plt.s
 # ## Une partie en vidéo (politique : ne rien faire)
 
 # %%
-from PIL import Image
-
 def episode_gif(env, policy, path, seed=None, max_steps=450):
     """Joue un épisode et l'enregistre en GIF (rendu debug)."""
     env.reset(seed=seed)

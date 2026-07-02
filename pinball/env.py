@@ -35,6 +35,8 @@ class PinballEnv:
         self._done = False
         frame = render_frame(self.sim, self.obs_size)
         self._prev_frame = frame
+        # premier pas : frames dupliquées — état jamais vu à l'entraînement
+        # (les datasets commencent à t=1) ; une seule décision par épisode
         return np.stack([frame, frame])
 
     def step(self, action: int) -> tuple[np.ndarray, dict]:
