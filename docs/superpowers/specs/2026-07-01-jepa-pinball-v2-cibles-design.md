@@ -112,3 +112,21 @@ w_d = 1,0 ; w_h = 0,5 ; w_t = 2,0 — réglables dans le notebook 04.
 Multi-balles, score numérique par cible (toutes valent 1), curriculum sur n,
 transfert de table. La boucle d'itération (notebook 05) reste applicable telle
 quelle après la V2 — elle enrichira notamment les labels de la tête cible.
+
+## 9. Amendement V2.2 — architecture BIG+GAMMA (2026-07-02, expérience contrôlée)
+
+Constat post-revalidation : trajectoires imaginées décalées, bras figés dans
+l'imagination, lisibilité de la balle en production (0,13) inférieure au
+potentiel mesuré (0,058) — l'érosion du contenu dynamique continue avec les
+pas d'optimisation, même après le correctif de saillance.
+
+Expérience (5 variantes, protocole local identique) : grossir seul ne change
+rien ; grille spatiale 8×8 rejetée ; **la pondération des horizons courts
+(γ=0,7 sur la perte de rollout) améliore tout** — balle 0,054→0,041, bras
+0,114→0,059, trajectoire déroulée h=1 0,064→0,046, variance dynamique ×2,8.
+Décision : **BIG+GAMMA** — encodeur (48, 96, 192, 384), z=384, prédicteur
+768, a_dim 64, γ=0,7 par défaut. Checkpoints auto-descriptifs (hparams
+embarqués, chargement reconstruisant l'architecture) ; anciens checkpoints
+rejetés avec message clair ; datasets inchangés (l'observation ne bouge pas).
+Nouveau diagnostic n°4 au notebook 03 : lisibilité de la balle par sonde
+(alerte si > 0,12).

@@ -1537,3 +1537,177 @@ Commit : `docs: notebook 06 — superpositions prédit/réel et décodeur d'imag
 3. Critère V2 : taux de victoire de l'agent NETTEMENT au-dessus de toutes les
    baselines (elles plafonnent à ~2 % par chance) → `git tag v2`.
 4. Suivi non bloquant : mettre à jour le README (badges + section V2).
+
+---
+
+### Task 34: Architecture BIG+GAMMA et checkpoints auto-descriptifs
+
+**Décision (2026-07-02, expérience contrôlée `_exp_arch`, 5 variantes) :**
+grossir seul ne change rien (BIG ≈ BASE) ; la grille spatiale 8×8 échoue
+partout (FINE) ; la **pondération des horizons courts** (γ=0,7) améliore tout
+— lisibilité balle 0,054→0,041, bras 0,114→0,059, trajectoire déroulée h=1
+0,064→0,046, variance dynamique ×2,8 (antidote à l'érosion). BIG+GAMMA
+retenu (gain marginal supplémentaire, coût GPU nul) : canaux (48, 96, 192,
+384), z_dim 384, prédicteur 768, a_dim 64, γ=0,7. L'observation ne change
+pas : les datasets restent valides, seuls les checkpoints sont obsolètes —
+d'où des checkpoints AUTO-DESCRIPTIFS (hparams embarqués).
+
+**Files:**
+- Modify: `jepa/model.py`, `jepa/train.py`, `jepa/heads.py` (si nécessaire),
+  `jepa/decoder.py`
+- Test: `tests/test_model.py`, `tests/test_train.py`, `tests/test_viz.py` (mises à jour + ajouts)
+
+**Interfaces:**
+- `Encoder(in_ch=2, z_dim=384, channels=(48, 96, 192, 384))` — boucle conv
+  inchangée, `side = 64 // 2**len(channels)`, fc adapté. GroupNorm(8, c)
+  reste valide (canaux divisibles par 8).
+- `Predictor(z_dim=384, n_actions=4, a_dim=64, hidden=768)`.
+- `JEPA(z_dim=384, enc_channels=(48, 96, 192, 384), pred_hidden=768,
+  a_dim=64)` ; attribut `self.hparams = {"z_dim", "enc_channels" (tuple),
+  "pred_hidden", "a_dim"}` ; propriété `z_dim`.
+- `JEPA.loss(frames, actions, gamma: float | None = 0.7)` — chaque pas i
+  pondéré par `gamma**i`, perte = somme pondérée / somme des poids ;
+  `gamma=None` = uniforme (rétro-compatible). MÉTRIQUES INCHANGÉES
+  (pred_mse/copy_mse restent des moyennes non pondérées, comparables).
+  Docstring pédagogique : sans pondération, l'erreur irréductible des
+  horizons lointains domine le gradient et pousse à moyenner ; γ concentre
+  l'apprentissage sur la dynamique fine (bras, balle proche) — chiffres de
+  l'expérience cités.
+- `train_jepa(..., gamma: float | None = 0.7)` — transmis à `loss` ; le
+  checkpoint gagne `"hparams": model.hparams` ; la REPRISE reconstruit
+  `JEPA(**ckpt["hparams"])`.
+- `load_jepa` : reconstruit depuis `ckpt["hparams"]` ; si la clé manque
+  (checkpoint antérieur) → `ValueError` explicite « checkpoint d'une version
+  antérieure (architecture inconnue) — réentraîner via le notebook 03 ».
+- `train_objective_heads` / `train_danger_head` : les têtes DOIVENT être
+  construites avec la dimension des latents (`z_train.shape[1]`) — vérifier
+  que c'est déjà le cas (motif de `train_danger_head`), corriger sinon.
+- `train_decoder` : `Decoder(z_dim=jepa.z_dim)` (fallback
+  `getattr(jepa, "z_dim", 256)` inutile : JEPA a toujours la propriété).
+  La classe `Decoder` garde son défaut 256 (tests unitaires explicites).
+
+Mises à jour de tests (exhaustives) :
+- `test_model.py` : shapes 256→384 dans `test_encoder_shapes`,
+  `test_predictor_shapes_and_action_sensitivity` (out shape),
+  `test_encode_routes_online_and_target` ((3, 384)) ; la fourchette de
+  paramètres devient `1_000_000 < n < 8_000_000` (encodeur ≈ 3,2 M).
+- `test_viz.py` : `rollout_latents` → (8, 384) ; `test_overlays_return_images`
+  construit `PositionProbe(384)` (et `Decoder(384)` pour `imagination_strip`).
+- Nouveaux tests :
+
+```python
+def test_loss_gamma_weighting_differs():
+    torch.manual_seed(0)
+    jepa = JEPA()
+    frames = torch.randint(0, 255, (3, 10, 64, 64), dtype=torch.uint8)
+    actions = torch.randint(0, 4, (3, 8))
+    l_g, _ = jepa.loss(frames, actions, gamma=0.7)
+    l_u, _ = jepa.loss(frames, actions, gamma=None)
+    assert l_g.isfinite() and l_u.isfinite()
+    assert not torch.isclose(l_g, l_u)   # la pondération change bien la perte
+
+
+def test_checkpoint_self_describing(tmp_path):
+    # un checkpoint embarque son architecture : load_jepa reconstruit
+    # à l'identique même pour des dimensions non standard
+    eps = [moving_dot_episode(T=15, seed=0)]
+    import jepa.train as jt
+    torch.manual_seed(0)
+    small = JEPA(z_dim=128, enc_channels=(16, 32, 64, 128),
+                 pred_hidden=256, a_dim=16)
+    opt = torch.optim.AdamW(
+        [p for p in small.parameters() if p.requires_grad], lr=1e-3)
+    torch.save({"model": small.state_dict(), "optimizer": opt.state_dict(),
+                "epoch": 1, "history": [], "hparams": small.hparams},
+               tmp_path / "jepa.pt")
+    loaded = jt.load_jepa(tmp_path / "jepa.pt", device="cpu")
+    assert loaded.z_dim == 128
+    obs = torch.randint(0, 255, (2, 2, 64, 64), dtype=torch.uint8)
+    assert loaded.encode(obs).shape == (2, 128)
+
+
+def test_load_jepa_rejects_legacy_checkpoint(tmp_path):
+    torch.save({"model": {}, "optimizer": {}, "epoch": 1, "history": []},
+               tmp_path / "jepa.pt")
+    with pytest.raises(ValueError):
+        jt_load = __import__("jepa.train", fromlist=["load_jepa"]).load_jepa
+        jt_load(tmp_path / "jepa.pt", device="cpu")
+```
+
+(`import pytest` si absent dans test_train.py ; GroupNorm(8, 16) valide.)
+
+Suite attendue : 87 − 0 + 3 = 90 PASS (les tests modifiés restent au même
+nombre). Commit :
+`feat: architecture BIG+GAMMA (z=384, perte pondérée γ=0.7) + checkpoints auto-descriptifs`
+
+---
+
+### Task 35: Notebooks — dimensions dynamiques et diagnostic n°4
+
+**Files:**
+- Modify: `notebooks/03_jepa.py`, `notebooks/05_iteration.py`,
+  `notebooks/06_visualisation.py` (+ .ipynb régénérés)
+
+Éditions exactes :
+
+**03** — après le diagnostic n°3, AVANT le markdown final, insérer :
+
+```python
+# %% [markdown]
+# ## Diagnostic n°4 : la balle est-elle LISIBLE dans le latent ?
+#
+# Les diagnostics 1-3 peuvent être bons alors que la position précise de la
+# balle s'est érodée du latent (vécu : cibles trop saillantes, puis
+# sur-entraînement). Test direct : une petite sonde apprend à lire (x, y)
+# depuis les latents gelés — son erreur sur des épisodes de validation dit
+# ce que le latent contient VRAIMENT. Référence : un devin qui répond
+# toujours la position moyenne.
+
+# %%
+from jepa.data import MultiLabelDataset
+from jepa.heads import PositionProbe
+
+def readability(episodes_subset):
+    ds = MultiLabelDataset(episodes_subset)
+    idx = np.linspace(0, len(ds) - 1, min(3000, len(ds)), dtype=int)
+    obs = torch.stack([ds[int(i)]["obs"] for i in idx])
+    pos = torch.stack([ds[int(i)]["pos"] for i in idx])
+    with torch.no_grad():
+        z = torch.cat([model_cpu.encode_target(obs[j:j + 256])
+                       for j in range(0, len(obs), 256)])
+    return z, pos
+
+z_tr, p_tr = readability(episodes[:-40])
+z_va, p_va = readability(episodes[-40:])
+torch.manual_seed(0)
+probe = PositionProbe(model_cpu.z_dim)
+popt = torch.optim.AdamW(probe.parameters(), lr=1e-3)
+for _ in range(400):
+    perm = torch.randperm(len(z_tr))[:512]
+    loss_p = ((probe(z_tr[perm]) - p_tr[perm]) ** 2).mean()
+    popt.zero_grad(); loss_p.backward(); popt.step()
+probe.eval()
+with torch.no_grad():
+    mae = (probe(z_va) - p_va).abs().mean().item()
+naif = (p_tr.mean(0) - p_va).abs().mean().item()
+print(f"lisibilité de la balle : MAE = {mae:.3f} (devin naïf : {naif:.3f})")
+print("bon signe si < 0.08 ; au-delà de 0.12, le latent a perdu la balle.")
+```
+
+**05** — le rechargement des têtes v1 devient dimension-conscient :
+`DangerHead(jepa_v1.z_dim)`, `HeightHead(jepa_v1.z_dim)`,
+`TargetHead(jepa_v1.z_dim)`, `PositionProbe(jepa_v1.z_dim)` (dict inchangé
+par ailleurs).
+
+**06** — `probe = PositionProbe(jepa.z_dim)` (chargement pos.pt inchangé).
+
+Vérifications : jupytext ×3 ; ast ; suite inchangée (90 PASS). Commit :
+`docs: notebooks — dimensions dynamiques (z_dim du checkpoint) + diagnostic n°4 lisibilité`
+
+## Validation V2.2 (Colab)
+
+Les datasets restent VALIDES (observation inchangée). Supprimer uniquement
+`checkpoints_targets/` et `checkpoints_targets_v2/` du Drive, puis 03 (10
+epochs, ~30-60 min — modèle plus gros) → vérifier diagnostics n°3 ET n°4
+(< 0.08 attendu) → 04 → 05 → 06. Attendu : croix de trajectoire sur les
+cercles à h=1-3, bras animés dans l'imagination.
