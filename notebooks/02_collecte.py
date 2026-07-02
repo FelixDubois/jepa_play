@@ -10,7 +10,7 @@
 import importlib.util, subprocess, sys, os
 IN_COLAB = importlib.util.find_spec("google.colab") is not None
 if IN_COLAB and not os.path.exists("jepa_play"):
-    subprocess.run(["git", "clone", "https://github.com/VOTRE_COMPTE/jepa_play.git"], check=True)
+    subprocess.run(["git", "clone", "https://github.com/FelixDubois/jepa_play.git"], check=True)
     os.chdir("jepa_play")
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", "."], check=True)
 
