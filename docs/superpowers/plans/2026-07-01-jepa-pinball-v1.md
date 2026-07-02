@@ -2041,6 +2041,7 @@ Détails d'implémentation imposés :
 ```python
 # tests/test_train.py
 import numpy as np
+import pytest
 import torch
 from jepa.train import load_jepa, train_jepa
 
@@ -2095,6 +2096,15 @@ def test_load_jepa_roundtrip(tmp_path):
     obs = torch.randint(0, 255, (2, 2, 64, 64), dtype=torch.uint8)
     assert torch.allclose(model.encode(obs), loaded.encode(obs), atol=1e-6)
     assert not loaded.training
+
+
+def test_train_raises_on_empty_loader(tmp_path):
+    # batch_size > nb de fenêtres + drop_last : sans garde, l'epoch "réussit"
+    # à vide (loss 0, fausse alerte collapse). On exige un échec explicite.
+    eps = [moving_dot_episode(T=15, seed=0)]  # 11 fenêtres à k=4
+    with pytest.raises(ValueError):
+        train_jepa(eps, tmp_path, epochs=1, k=4, batch_size=64,
+                   device="cpu", num_workers=0)
 ```
 
 - [ ] **Step 2: Vérifier l'échec**
@@ -2150,6 +2160,10 @@ def train_jepa(episodes, out_dir, epochs: int = 10, k: int = 8,
     ds = WindowDataset(episodes, k=k)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True,
                     num_workers=num_workers, drop_last=True)
+    if len(dl) == 0:
+        raise ValueError(
+            f"batch_size={batch_size} > {len(ds)} fenêtres disponibles : "
+            "réduire batch_size ou collecter plus de données")
     use_amp = dev == "cuda"
     scaler = torch.amp.GradScaler(enabled=use_amp)
 
@@ -2199,7 +2213,7 @@ def load_jepa(ckpt_path, device: str | None = None) -> JEPA:
 - [ ] **Step 4: Vérifier que les tests passent**
 
 Run: `pytest tests/test_train.py -v`
-Expected: 3 PASS (l'overfit prend ~30-60 s sur CPU — acceptable).
+Expected: 4 PASS (l'overfit prend ~30-60 s sur CPU — acceptable).
 
 Si `weights_only=True` pose problème (history contient des dicts Python
 simples : OK normalement), passer `weights_only=False` — le checkpoint est
