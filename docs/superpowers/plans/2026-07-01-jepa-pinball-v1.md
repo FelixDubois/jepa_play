@@ -2465,6 +2465,17 @@ def test_train_danger_head_learns_separable_signal():
     head, val_auc = train_danger_head(jepa, eps, epochs=10, batch_size=64,
                                       device="cpu")
     assert val_auc > 0.9
+
+
+def test_train_danger_head_clamps_large_batch():
+    # batch_size > nb d'échantillons : sans clamp, la boucle interne ne ferait
+    # AUCUN pas d'optimiseur et retournerait une tête aléatoire, en silence
+    # (mesuré : AUC 0.10 sans clamp, 1.00 avec, seed 0).
+    torch.manual_seed(0)
+    eps = [separable_episode(30, s % 2 == 0, s) for s in range(20)]
+    head, val_auc = train_danger_head(JEPA(), eps, epochs=10,
+                                      batch_size=10_000, device="cpu")
+    assert val_auc > 0.9
 ```
 
 - [ ] **Step 2: Vérifier l'échec**
@@ -2557,6 +2568,8 @@ def train_danger_head(jepa, episodes, k_danger: int = 10, epochs: int = 3,
     opt = torch.optim.AdamW(head.parameters(), lr=lr)
 
     z_train, y_train = z_train.to(dev), y_train.to(dev)
+    # clamp : sinon batch_size > données => zéro pas d'optimiseur, en silence
+    batch_size = min(batch_size, len(z_train))
     for _ in range(epochs):
         perm = torch.randperm(len(z_train), device=dev)
         for i in range(0, len(perm) - batch_size + 1, batch_size):
@@ -2578,7 +2591,7 @@ def train_danger_head(jepa, episodes, k_danger: int = 10, epochs: int = 3,
 - [ ] **Step 4: Vérifier que les tests passent**
 
 Run: `pytest tests/test_heads.py -v`
-Expected: 3 PASS.
+Expected: 4 PASS.
 
 Note : `test_train_danger_head_learns_separable_signal` utilise un encodeur
 aléatoire — c'est voulu (une projection aléatoire préserve un signal aussi
