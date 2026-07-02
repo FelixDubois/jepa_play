@@ -42,11 +42,13 @@ class PeriodicFlapper:
 def run_episode(env, policy, seed: int | None = None) -> dict:
     obs = env.reset(seed=seed)
     policy.reset()
+    nudges = 0
     while True:
         obs, info = env.step(policy(obs))
+        nudges += int(info["nudged"])
         if info["done"]:
             return {"steps": info["steps"], "ball_lost": info["ball_lost"],
-                    "stuck": info["stuck"]}
+                    "stuck": info["stuck"], "nudges": nudges}
 
 
 def evaluate(env, policy, n_episodes: int = 50, seed0: int = 1000) -> dict:
@@ -59,6 +61,7 @@ def evaluate(env, policy, n_episodes: int = 50, seed0: int = 1000) -> dict:
         "median_steps": float(np.median(lengths)),
         "survival_s": float(lengths.mean() / hz),
         "loss_rate": float(np.mean([r["ball_lost"] for r in results])),
+        "mean_nudges": float(np.mean([r["nudges"] for r in results])),
         "lengths": lengths,
     }
 
