@@ -30,7 +30,15 @@ class Decoder(nn.Module):
 
 
 def train_decoder(jepa, episodes, epochs: int = 3, batch_size: int = 256,
-                  lr: float = 1e-3, device: str | None = None) -> Decoder:
+                  lr: float = 1e-3, bright_weight: float = 10.0,
+                  device: str | None = None) -> Decoder:
+    """Entraîne le décodeur de visualisation (encodeur gelé).
+
+    Piège des images de flipper : ~95 % des pixels sont noirs — une MSE nue
+    apprend « tout noir » (mesuré : aucun pixel > 0,5 en sortie) et la
+    sigmoïde sature. Chaque pixel est donc pondéré par 1 + bright_weight·cible :
+    les pixels allumés (balle, cibles, murs) dominent la perte.
+    """
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     jepa = jepa.to(dev).eval()
     ds = MultiLabelDataset(episodes)
@@ -46,11 +54,13 @@ def train_decoder(jepa, episodes, epochs: int = 3, batch_size: int = 256,
             obs = batch["obs"].to(dev)
             with torch.no_grad():
                 z = jepa.encode_target(obs)
-            loss = nn.functional.mse_loss(dec(z), obs[:, 1].float() / 255.0)
+            target = obs[:, 1].float() / 255.0
+            weights = 1.0 + bright_weight * target
+            loss = (weights * (dec(z) - target) ** 2).mean()
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
             total += loss.item()
             nb += 1
-        print(f"décodeur epoch {epoch + 1}/{epochs}  mse={total / max(nb, 1):.5f}")
+        print(f"décodeur epoch {epoch + 1}/{epochs}  wmse={total / max(nb, 1):.5f}")
     return dec.eval()

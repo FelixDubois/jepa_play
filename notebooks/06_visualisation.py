@@ -85,6 +85,34 @@ decoder = train_decoder(jepa, episodes, epochs=3)
 torch.save(decoder.state_dict(), CKPT_DIR / "decoder.pt")
 
 # %% [markdown]
+# ### Contrôle : le plafond du décodeur
+#
+# Avant de décoder l'IMAGINATION, vérifions ce que le décodeur sait faire sur
+# des latents RÉELS (encodés depuis de vraies images) : c'est sa performance
+# maximale, l'imagination ne sera jamais plus nette. Si cette ligne est déjà
+# noire ou floue, le problème est le décodeur — pas le prédicteur. (La perte
+# est pondérée vers les pixels allumés : ~95 % du plateau est noir, une MSE
+# nue apprendrait « tout noir ».)
+
+# %%
+import numpy as np
+from jepa.data import MultiLabelDataset
+
+ds_ctrl = MultiLabelDataset(episodes[:5])
+idx = np.linspace(0, len(ds_ctrl) - 1, 8, dtype=int)
+obs_ctrl = torch.stack([ds_ctrl[int(i)]["obs"] for i in idx])
+with torch.no_grad():
+    recon = decoder(jepa.encode_target(obs_ctrl)).cpu().numpy()
+fig, axes = plt.subplots(2, 8, figsize=(16, 4.2))
+for j in range(8):
+    axes[0, j].imshow(obs_ctrl[j, 1], cmap="gray", vmin=0, vmax=255)
+    axes[1, j].imshow(recon[j], cmap="gray", vmin=0, vmax=1)
+    axes[0, j].axis("off")
+    axes[1, j].axis("off")
+plt.suptitle("Plafond du décodeur : réel (haut) vs reconstruit (bas)")
+plt.show()
+
+# %% [markdown]
 # ## 3. L'imagination en images
 #
 # Trois lignes : le RÉEL, l'IMAGINÉ (décodé des latents prédits ẑ), et la
