@@ -1,0 +1,104 @@
+# JEPA Pinball V2 « Cibles » — Spécification de design
+
+**Date** : 2026-07-01
+**Statut** : validé par l'utilisateur (conversation du 2026-07-01, soir)
+**Complète** : la spec V1 (`2026-07-01-jepa-pinball-design.md`) — les sections
+non mentionnées ici restent valables.
+
+## 1. Motivation
+
+L'itération 1 (V1.5) a diagnostiqué un **reward hacking** : sous l'objectif
+« éviter de perdre la balle », l'agent a appris à immobiliser la balle sur les
+flippers levés (agent 16,0 s / 3,5 nudges ≈ « toujours appuyé » 14,4 s / 3,2).
+La V2 change l'objectif du jeu et, par construction, tue cet exploit :
+
+- **des cibles à toucher, placées aléatoirement à chaque partie** → la vision
+  devient indispensable (aucune mémorisation de table possible), et une balle
+  piégée ne touche rien ;
+- **un objectif de hauteur continu** → être bas (= piégé) coûte, à chaque pas ;
+- **victoire = toutes les cibles touchées** → l'épisode a une fin heureuse, la
+  métrique reine devient le taux de victoire.
+
+S'y ajoute la demande de **visualiser les prédictions** du world model, en
+superposition avec le réel.
+
+## 2. Décisions utilisateur
+
+- Cible touchée → **elle disparaît** (physiquement et à l'image) ; quand toutes
+  sont touchées → **fin d'épisode en victoire**.
+- Hauteur : objectif **continu et proportionnel** (pas de seuil).
+- 1 à 3 cibles par épisode, tirées aléatoirement, **jamais près des flippers**.
+- Notebooks : **double-mode** Colab (recommandé, GPU T4) + local (CPU possible).
+
+## 3. Mécanique des cibles (validée par prototype, 2026-07-01)
+
+- Plots circulaires **pleins**, rayon 26, élasticité 1,2, dessinés en gris 150
+  au rendu 64×64 (≈ 3 px : nettement distincts de la balle, blanche et plus
+  petite — visibilité vérifiée à l'image).
+- Placement à `env.reset()` : n ∈ {1, 2, 3} uniforme ; positions uniformes dans
+  la zone sûre x ∈ [70, 470], y ∈ [420, 860] (les flippers/slingshots culminent
+  à ~350) ; séparation minimale de 100 entre cibles ; tirage par le RNG de
+  l'env (déterministe à seed fixée).
+- **Détection de contact par distance** (robuste, indépendante de l'API de
+  collision pymunk) : après chaque pas de contrôle, un contact est compté si
+  dist(balle, cible) ≤ r_balle + r_cible + 2. La cible touchée est retirée de
+  l'espace physique et du rendu.
+- Équilibrage mesuré (table dure, politique aléatooire, 120 épisodes) : 10 %
+  des cibles touchées par hasard, ≥1 contact dans 21 % des épisodes, 2 %
+  de victoires chanceuses, aucun nouveau point de blocage.
+
+## 4. Environnement
+
+- `info` gagne : `targets_total`, `targets_hit` (cumul), `hit_now` (nb de
+  contacts ce pas), `completed` (bool).
+- `done = ball_lost OU stuck OU steps ≥ max OU completed`.
+- L'observation reste l'image seule (64×64×2) : les cibles n'y sont connues
+  QUE par les pixels.
+
+## 5. Têtes d'objectif et coût de planification
+
+Toutes entraînées sur les latents `encode_target` (l'espace des prédictions),
+encodeur gelé, labels auto-générés :
+
+| Tête | Sortie | Label |
+|---|---|---|
+| danger (honnête) | P(fin PERDANTE dans k pas) | queue des épisodes finissant `ball_lost` OU `stuck` — les fins en victoire ne sont PAS dangereuses |
+| hauteur | ŷ ∈ [0, 1] (régression) | `ball_pos.y / height` |
+| cible | P(contact dans k pas) | fenêtres de k pas précédant un `hit` |
+| sonde position | (x̂, ŷ) normalisés | `ball_pos` (pour la visualisation uniquement) |
+
+**Coût MPC** (par pas imaginé, somme sur l'horizon 8) :
+`w_d·σ(danger(ẑ)) − w_h·hauteur(ẑ) − w_t·σ(cible(ẑ))`, défauts
+w_d = 1,0 ; w_h = 0,5 ; w_t = 2,0 — réglables dans le notebook 04.
+`MPCPlanner` reste rétro-compatible (têtes hauteur/cible optionnelles).
+
+## 6. Visualisation des prédictions (nouveau notebook 06)
+
+1. **Superposition trajectoire** : sur une fenêtre réelle (o_t, actions
+   exécutées), dérouler le prédicteur 8 pas, sonder chaque ẑ avec la tête
+   position, dessiner les positions prédites (marqueurs colorés, dégradé
+   d'horizon) SUR les frames réelles → GIF/planche « prédit vs réel ».
+2. **Décodeur d'imagination** : petit déconv `z̄ → image 64×64` entraîné à part
+   (encodeur gelé, MSE pixels, ~10 min GPU — le décodeur ne sert QU'À la
+   visualisation, JEPA n'apprend jamais en pixels). Affichages : réel |
+   décodé(ẑ) côte à côte, et superposition RGB (rouge = prédit, vert = réel,
+   jaune = accord).
+
+## 7. Données et évaluation
+
+- Nouveaux dossiers : `data/targets_v1`, `checkpoints_targets` (Drive :
+  `MyDrive/jepa_pinball/...`) — les datasets précédents sont obsolètes (les
+  cibles doivent être dans les pixels).
+- Shards : + `hits` (T,) uint8 par pas, + `targets_total`, `completed` par
+  épisode (format additif).
+- `evaluate` gagne : `completion_rate`, `mean_height`, `targets_hit_rate`
+  (clés additives). Métrique reine : **taux de victoire**, puis temps moyen
+  de complétion, hauteur moyenne, nudges.
+- Baselines inchangées (aléatoire, toujours appuyé, flapper) + agent V1-style
+  (danger seul) comme témoin de l'apport des nouvelles têtes.
+
+## 8. Hors périmètre V2
+
+Multi-balles, score numérique par cible (toutes valent 1), curriculum sur n,
+transfert de table. La boucle d'itération (notebook 05) reste applicable telle
+quelle après la V2 — elle enrichira notamment les labels de la tête cible.
