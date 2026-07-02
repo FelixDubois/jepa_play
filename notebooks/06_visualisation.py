@@ -101,8 +101,9 @@ from jepa.data import MultiLabelDataset
 ds_ctrl = MultiLabelDataset(episodes[:5])
 idx = np.linspace(0, len(ds_ctrl) - 1, 8, dtype=int)
 obs_ctrl = torch.stack([ds_ctrl[int(i)]["obs"] for i in idx])
+dev = next(jepa.parameters()).device        # cuda sur Colab, cpu en local
 with torch.no_grad():
-    recon = decoder(jepa.encode_target(obs_ctrl)).cpu().numpy()
+    recon = decoder(jepa.encode_target(obs_ctrl.to(dev))).cpu().numpy()
 fig, axes = plt.subplots(2, 8, figsize=(16, 4.2))
 for j in range(8):
     axes[0, j].imshow(obs_ctrl[j, 1], cmap="gray", vmin=0, vmax=255)
