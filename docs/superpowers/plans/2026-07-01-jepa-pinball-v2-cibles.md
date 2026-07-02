@@ -887,6 +887,34 @@ def test_rollout_latents_shape():
     assert zs.shape == (8, 256)
 
 
+def test_decoder_learns_bright_pixels():
+    # ~95-97 % de pixels noirs : une MSE nue apprend « tout noir » (mesuré :
+    # 0 pixel > 0.5 en sortie). La perte pondérée doit reproduire la bille.
+    torch.manual_seed(0)
+
+    def sparse_ep(T=25, seed=0):
+        rng = np.random.default_rng(seed)
+        frames = np.zeros((T + 1, 64, 64), dtype=np.uint8)
+        frames[:, 60:63, :] = 90
+        for t in range(T + 1):
+            x = 8 + (t * 2) % 48
+            frames[t, 20:25, x:x + 5] = 255
+        return {"frames": frames,
+                "actions": rng.integers(0, 4, (T,)).astype(np.int64),
+                "ball_pos": np.zeros((T + 1, 2), dtype=np.float32),
+                "ball_lost": True}
+
+    from jepa.data import MultiLabelDataset
+    eps = [sparse_ep(seed=s) for s in range(2)]
+    jepa = JEPA()
+    dec = train_decoder(jepa, eps, epochs=5, batch_size=16, device="cpu")
+    ds = MultiLabelDataset(eps)
+    obs = torch.stack([ds[i]["obs"] for i in range(8)])
+    with torch.no_grad():
+        out = dec(jepa.encode_target(obs))
+    assert (out > 0.5).sum() > 0      # la bille brillante est reproduite
+
+
 def test_overlays_return_images():
     ep = fake_ep()
     img1 = trajectory_overlay(JEPA(), PositionProbe(), ep, t0=2, k=8, upscale=4)
@@ -930,7 +958,15 @@ class Decoder(nn.Module):
 
 
 def train_decoder(jepa, episodes, epochs: int = 3, batch_size: int = 256,
-                  lr: float = 1e-3, device: str | None = None) -> Decoder:
+                  lr: float = 1e-3, bright_weight: float = 10.0,
+                  device: str | None = None) -> Decoder:
+    """Entraîne le décodeur de visualisation (encodeur gelé).
+
+    Piège des images de flipper : ~95 % des pixels sont noirs — une MSE nue
+    apprend « tout noir » (mesuré : aucun pixel > 0,5 en sortie) et la
+    sigmoïde sature. Chaque pixel est donc pondéré par 1 + bright_weight·cible :
+    les pixels allumés (balle, cibles, murs) dominent la perte.
+    """
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     jepa = jepa.to(dev).eval()
     ds = MultiLabelDataset(episodes)
@@ -946,13 +982,15 @@ def train_decoder(jepa, episodes, epochs: int = 3, batch_size: int = 256,
             obs = batch["obs"].to(dev)
             with torch.no_grad():
                 z = jepa.encode_target(obs)
-            loss = nn.functional.mse_loss(dec(z), obs[:, 1].float() / 255.0)
+            target = obs[:, 1].float() / 255.0
+            weights = 1.0 + bright_weight * target
+            loss = (weights * (dec(z) - target) ** 2).mean()
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
             total += loss.item()
             nb += 1
-        print(f"décodeur epoch {epoch + 1}/{epochs}  mse={total / max(nb, 1):.5f}")
+        print(f"décodeur epoch {epoch + 1}/{epochs}  wmse={total / max(nb, 1):.5f}")
     return dec.eval()
 ```
 
@@ -1038,7 +1076,7 @@ def imagination_strip(jepa, decoder, ep: dict, t0: int, k: int = 8,
     return strip
 ```
 
-- [ ] **Step 4:** `pytest` → 79 + 4 = 83 PASS. **Step 5: Commit** —
+- [ ] **Step 4:** `pytest` → 79 + 5 = 84 PASS. **Step 5: Commit** —
   `feat: décodeur d'imagination + superpositions trajectoire/imagination`
 
 ---
@@ -1401,6 +1439,34 @@ plt.show()
 from jepa.decoder import train_decoder
 decoder = train_decoder(jepa, episodes, epochs=3)
 torch.save(decoder.state_dict(), CKPT_DIR / "decoder.pt")
+
+# %% [markdown]
+# ### Contrôle : le plafond du décodeur
+#
+# Avant de décoder l'IMAGINATION, vérifions ce que le décodeur sait faire sur
+# des latents RÉELS (encodés depuis de vraies images) : c'est sa performance
+# maximale, l'imagination ne sera jamais plus nette. Si cette ligne est déjà
+# noire ou floue, le problème est le décodeur — pas le prédicteur. (La perte
+# est pondérée vers les pixels allumés : ~95 % du plateau est noir, une MSE
+# nue apprendrait « tout noir ».)
+
+# %%
+import numpy as np
+from jepa.data import MultiLabelDataset
+
+ds_ctrl = MultiLabelDataset(episodes[:5])
+idx = np.linspace(0, len(ds_ctrl) - 1, 8, dtype=int)
+obs_ctrl = torch.stack([ds_ctrl[int(i)]["obs"] for i in idx])
+with torch.no_grad():
+    recon = decoder(jepa.encode_target(obs_ctrl)).cpu().numpy()
+fig, axes = plt.subplots(2, 8, figsize=(16, 4.2))
+for j in range(8):
+    axes[0, j].imshow(obs_ctrl[j, 1], cmap="gray", vmin=0, vmax=255)
+    axes[1, j].imshow(recon[j], cmap="gray", vmin=0, vmax=1)
+    axes[0, j].axis("off")
+    axes[1, j].axis("off")
+plt.suptitle("Plafond du décodeur : réel (haut) vs reconstruit (bas)")
+plt.show()
 
 # %% [markdown]
 # ## 3. L'imagination en images
