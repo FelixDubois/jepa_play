@@ -2691,6 +2691,32 @@ def test_planner_is_deterministic_given_seed():
     a1 = make_planner(seed=5).plan(obs)
     a2 = make_planner(seed=5).plan(obs)
     assert a1 == a2
+
+
+def test_planner_returns_first_action_of_best_sequence():
+    # Le gagnant est une séquence NON constante : première action 0, puis
+    # que des 2. Épingle l'extraction seqs[best, 0] — un bug seqs[best, -1]
+    # retournerait 2. (Avec les mocks, la séquence B = [0,2,2,...] domine
+    # A = [2,0,0,...] point à point à partir du 3e pas.)
+    planner = make_planner(n_candidates=0)
+    seq_a = np.full((1, planner.horizon), 0, dtype=np.int64)
+    seq_a[0, 0] = 2
+    seq_b = np.full((1, planner.horizon), 2, dtype=np.int64)
+    seq_b[0, 0] = 0
+    planner._candidate_sequences = lambda: np.concatenate([seq_a, seq_b])
+    obs = np.zeros((2, 64, 64), dtype=np.uint8)
+    assert planner.plan(obs) == 0
+
+
+def test_candidate_sequences_use_instance_seed():
+    # Épingle le câblage du RNG par instance (le test de déterminisme
+    # ci-dessus passerait même sans seed : le gagnant y est insensible
+    # aux candidats aléatoires).
+    a = make_planner(seed=5)._candidate_sequences()
+    b = make_planner(seed=5)._candidate_sequences()
+    c = make_planner(seed=6)._candidate_sequences()
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, c)
 ```
 
 - [ ] **Step 2: Vérifier l'échec**
@@ -2762,7 +2788,7 @@ class MPCPlanner:
 - [ ] **Step 4: Vérifier que les tests passent**
 
 Run: `pytest tests/test_planner.py -v`
-Expected: 4 PASS.
+Expected: 6 PASS.
 
 - [ ] **Step 5: Commit**
 
