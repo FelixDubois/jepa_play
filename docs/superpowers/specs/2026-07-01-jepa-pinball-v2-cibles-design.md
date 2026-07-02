@@ -32,7 +32,7 @@ superposition avec le réel.
 
 ## 3. Mécanique des cibles (validée par prototype, 2026-07-01)
 
-- Plots circulaires **pleins**, rayon 26, élasticité 1,2, dessinés en gris 150
+- Plots circulaires **pleins**, rayon 26, élasticité 1,2, dessinés en gris 110
   au rendu 64×64 (≈ 3 px : nettement distincts de la balle, blanche et plus
   petite — visibilité vérifiée à l'image).
 - Placement à `env.reset()` : n ∈ {1, 2, 3} uniforme ; positions uniformes dans
@@ -46,6 +46,16 @@ superposition avec le réel.
 - Équilibrage mesuré (table dure, politique aléatooire, 120 épisodes) : 10 %
   des cibles touchées par hasard, ≥1 contact dans 21 % des épisodes, 2 %
   de victoires chanceuses, aucun nouveau point de blocage.
+
+- **Amendement saillance (2026-07-02, validé par expérience contrôlée)** : les
+  cibles brillantes cannibalisaient l'encodage de la balle (sonde de position :
+  MAE 0,124 avec cibles vs 0,051 sans ; prédicteur battu par la baseline
+  copie ; s'aggrave avec la durée d'entraînement — MAE 0,137 à 2× plus
+  d'epochs). Remède mesuré : balle rendue à 3 px (plancher) et cibles gris 110
+  → MAE 0,058 et prédicteur à nouveau meilleur que la copie. Conséquence :
+  l'observation change — datasets et checkpoints antérieurs obsolètes.
+  Recommandation : rester à ~10 epochs (notebook 03) et surveiller le
+  diagnostic n°3.
 
 ## 4. Environnement
 

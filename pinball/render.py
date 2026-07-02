@@ -14,8 +14,8 @@ from .sim import PinballSim
 COLOR_WALL = 90
 COLOR_FLIPPER = 180
 COLOR_BALL = 255
-COLOR_TARGET = 150
-BALL_MIN_PX = 2.0   # plancher de visibilité de la balle
+COLOR_TARGET = 110  # plus sombre que les flippers (180) : mesuré, des cibles trop brillantes cannibalisent l'encodage de la balle dans le latent
+BALL_MIN_PX = 3.0   # plancher de visibilité : mesuré, à 2 px la balle perd la compétition de saillance face aux cibles
 
 
 def _project(cfg, size: int):

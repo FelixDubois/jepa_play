@@ -70,10 +70,10 @@ def test_targets_rendered_and_disappear():
     sim = PinballSim(cfg, np.random.default_rng(0), targets=[(270.0, 600.0)])
     sim.ball.position = (100.0, 850.0)   # balle loin de la cible
     f1 = render_frame(sim)
-    assert (f1 == 150).sum() >= 12       # le disque gris est là (~3 px de rayon)
+    assert (f1 == 110).sum() >= 12       # le disque gris est là (~3 px de rayon)
     sim.target_alive[0] = False          # cible éteinte
     f2 = render_frame(sim)
-    assert (f2 == 150).sum() == 0
+    assert (f2 == 110).sum() == 0
 
 
 def test_dead_target_leaves_debug_render():

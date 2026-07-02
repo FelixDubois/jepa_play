@@ -8,7 +8,7 @@ de hauteur continu, planification multi-objectifs, et visualisation des prédict
 
 **Spec:** `docs/superpowers/specs/2026-07-01-jepa-pinball-v2-cibles-design.md`
 (elle-même adossée à la spec V1). Valeurs cibles **validées par prototype**
-(2026-07-01) : rayon 26, gris 150, zone x∈[70,470] y∈[420,860], séparation 100,
+(2026-07-01) : rayon 26, gris 110, zone x∈[70,470] y∈[420,860], séparation 100,
 détection par distance — 10 % de cibles touchées par le hasard, 0 nouveau blocage.
 
 **Tech Stack:** inchangé.
@@ -310,8 +310,8 @@ dans `__init__`. Les trois méthodes :
 - Modify: `pinball/render.py`
 - Test: `tests/test_render.py` (ajouts)
 
-**Interfaces:** les cibles VIVANTES sont dessinées : disque plein gris 150
-(`COLOR_TARGET = 150`) dans `render_frame` ; disque cyan (80, 200, 220) dans
+**Interfaces:** les cibles VIVANTES sont dessinées : disque plein gris 110
+(`COLOR_TARGET = 110`) dans `render_frame` ; disque cyan (80, 200, 220) dans
 `render_debug`. Une cible morte disparaît des deux rendus. Rayon écran =
 `cfg.target_radius * sx` (pas de plancher : ~3 px, déjà visible — validé).
 
@@ -325,10 +325,10 @@ def test_targets_rendered_and_disappear():
     sim = PinballSim(cfg, np.random.default_rng(0), targets=[(270.0, 600.0)])
     sim.ball.position = (100.0, 850.0)   # balle loin de la cible
     f1 = render_frame(sim)
-    assert (f1 == 150).sum() >= 12       # le disque gris est là (~3 px de rayon)
+    assert (f1 == 110).sum() >= 12       # le disque gris est là (~3 px de rayon)
     sim.target_alive[0] = False          # cible éteinte
     f2 = render_frame(sim)
-    assert (f2 == 150).sum() == 0
+    assert (f2 == 110).sum() == 0
 
 
 def test_dead_target_leaves_debug_render():
@@ -354,7 +354,7 @@ paramètre `target_color` à la signature et :
             d.ellipse([cx - tr, cy - tr, cx + tr, cy + tr], fill=target_color)
 ```
 
-`COLOR_TARGET = 150` en constante de module ; `render_frame` passe
+`COLOR_TARGET = 110` en constante de module ; `render_frame` passe
 `COLOR_TARGET`, `render_debug` passe `(80, 200, 220)`.
 
 - [ ] **Step 4:** `pytest` → 63 + 2 = 65 PASS. **Step 5: Commit** —
