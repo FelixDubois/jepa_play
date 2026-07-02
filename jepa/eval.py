@@ -43,12 +43,18 @@ def run_episode(env, policy, seed: int | None = None) -> dict:
     obs = env.reset(seed=seed)
     policy.reset()
     nudges = 0
+    heights = []
     while True:
         obs, info = env.step(policy(obs))
         nudges += int(info["nudged"])
+        heights.append(info["ball_pos"][1] / env.config.height)
         if info["done"]:
             return {"steps": info["steps"], "ball_lost": info["ball_lost"],
-                    "stuck": info["stuck"], "nudges": nudges}
+                    "stuck": info["stuck"], "nudges": nudges,
+                    "completed": info["completed"],
+                    "targets_total": info["targets_total"],
+                    "targets_hit": info["targets_hit"],
+                    "mean_height": float(np.mean(heights))}
 
 
 def evaluate(env, policy, n_episodes: int = 50, seed0: int = 1000) -> dict:
@@ -56,6 +62,7 @@ def evaluate(env, policy, n_episodes: int = 50, seed0: int = 1000) -> dict:
                for i in range(n_episodes)]
     lengths = np.array([r["steps"] for r in results])
     hz = env.config.physics_hz / env.config.frame_skip
+    total_targets = sum(r["targets_total"] for r in results)
     return {
         "mean_steps": float(lengths.mean()),
         "median_steps": float(np.median(lengths)),
@@ -63,6 +70,14 @@ def evaluate(env, policy, n_episodes: int = 50, seed0: int = 1000) -> dict:
         "loss_rate": float(np.mean([r["ball_lost"] for r in results])),
         "mean_nudges": float(np.mean([r["nudges"] for r in results])),
         "lengths": lengths,
+        "completion_rate": float(np.mean([r["completed"] for r in results])),
+        "mean_completion_s": float(np.mean([r["steps"] for r in results
+                                            if r["completed"]]) / hz)
+                             if any(r["completed"] for r in results) else float("nan"),
+        "targets_hit_rate": (float(sum(r["targets_hit"] for r in results))
+                             / total_targets) if total_targets > 0
+                            else float("nan"),
+        "mean_height": float(np.mean([r["mean_height"] for r in results])),
     }
 
 
