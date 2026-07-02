@@ -5,6 +5,9 @@
 # flippers au hasard, des milliers de parties, à vitesse machine. Le modèle
 # n'a pas besoin de BON jeu — il a besoin de VARIÉTÉ : rebonds, frappes,
 # et beaucoup de balles perdues (elles serviront de labels de danger).
+#
+# Les expériences tournent sur la TABLE DURE (hard_board) : drain ouvert,
+# flippers courts — les stratégies aveugles ne survivent pas ici.
 
 # %%
 import importlib.util, subprocess, sys, os
@@ -19,14 +22,15 @@ from pathlib import Path
 if IN_COLAB:
     from google.colab import drive
     drive.mount("/content/drive")
-    DATA_DIR = Path("/content/drive/MyDrive/jepa_pinball/data/v1")
+    DATA_DIR = Path("/content/drive/MyDrive/jepa_pinball/data/hard_v1")
 else:
-    DATA_DIR = Path("data/v1")
+    DATA_DIR = Path("data/hard_v1")
 print("Dataset →", DATA_DIR)
 
 # %%
 import numpy as np
 from pinball.collect import StickyRandomPolicy, collect_dataset, load_episodes
+from pinball.config import hard_board
 from pinball.env import PinballEnv
 
 N_TRANSITIONS = 100_000
@@ -34,7 +38,7 @@ N_TRANSITIONS = 100_000
 if DATA_DIR.exists() and list(DATA_DIR.glob("shard_*.npz")):
     print("Dataset déjà présent — collecte sautée (supprimer le dossier pour refaire).")
 else:
-    env = PinballEnv(seed=42)
+    env = PinballEnv(hard_board(), seed=42)
     policy = StickyRandomPolicy(np.random.default_rng(42))
     stats = collect_dataset(env, policy, N_TRANSITIONS, DATA_DIR)
     print(stats)

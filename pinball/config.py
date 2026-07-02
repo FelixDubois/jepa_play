@@ -103,3 +103,13 @@ class BoardConfig:
         mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
         apex = (mx + nx * self.sling_height, my + ny * self.sling_height)
         return [p1, p2, apex]
+
+
+def hard_board() -> BoardConfig:
+    """La table officielle des expériences (notebooks 02, 04, 05).
+
+    Drain largement ouvert (120 − 2×12 = 96 > diamètre 28 : la balle passive
+    draine) et flippers courts. Mesuré : toutes les politiques aveugles
+    s'effondrent (~2 s) — il faut VOIR la balle pour survivre.
+    """
+    return BoardConfig(drain_gap=120.0, flipper_length=90.0)

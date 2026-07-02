@@ -40,3 +40,13 @@ def test_config_is_customizable():
     assert cfg.drain_gap == 100.0
     small = BoardConfig(flipper_length=80.0).pivot_offset
     assert small < BoardConfig().pivot_offset
+
+
+def test_hard_board_preset():
+    from pinball.config import hard_board
+    cfg = hard_board()
+    assert cfg.drain_gap == 120.0 and cfg.flipper_length == 90.0
+    # l'ouverture au repos dépasse le diamètre de la balle : vrai trou central
+    assert cfg.drain_gap - 2 * cfg.flipper_thickness > 2 * cfg.ball_radius
+    # les défauts de BoardConfig ne bougent pas
+    assert BoardConfig().drain_gap == 44.0

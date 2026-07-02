@@ -27,7 +27,7 @@ if IN_COLAB:
     ROOT = Path("/content/drive/MyDrive/jepa_pinball")
 else:
     ROOT = Path(".")
-DATA_DIR, CKPT_DIR = ROOT / "data/v1", ROOT / "checkpoints"
+DATA_DIR, CKPT_DIR = ROOT / "data/hard_v1", ROOT / "checkpoints_hard"
 
 # %%
 from pinball.collect import load_episodes
@@ -66,13 +66,14 @@ print(f"AUC heuristique -hauteur (triche) : {auc(-heights, labels):.3f}")
 # D'abord un coup d'œil qualitatif : quatre GIF côte à côte.
 
 # %%
+from pinball.config import hard_board
 from pinball.env import PinballEnv
 from pinball.collect import StickyRandomPolicy
 from jepa.eval import AlwaysPressed, PeriodicFlapper, evaluate, record_gif
 from jepa.planner import MPCPlanner
 
 agent = MPCPlanner(jepa, head)
-env = PinballEnv()
+env = PinballEnv(hard_board())
 for name, pol in [("agent", agent),
                   ("aleatoire", StickyRandomPolicy(np.random.default_rng(0))),
                   ("toujours", AlwaysPressed()),
@@ -93,8 +94,9 @@ for name in ("agent", "aleatoire", "toujours", "flapper"):
 # NETTEMENT l'aléatoire et « toujours appuyé » (spec §2 et §12).
 #
 # On ajoute un quatrième concurrent, découvert pendant le développement :
-# le **flapper aveugle**, qui bat des deux flippers en rythme sans jamais
-# regarder l'écran — et qui survit étonnamment longtemps sur cette table.
+# le **flapper aveugle**, qui bat des deux flippers en rythme sans regarder
+# l'écran. Sur la table par défaut il survivait 60 s ; sur la table dure,
+# les stratégies aveugles s'effondrent — c'est tout l'intérêt.
 # Il ne fait pas partie du critère d'acceptation, mais c'est le test
 # d'honnêteté du projet : si l'agent ne fait pas mieux que lui, c'est qu'il
 # a appris un rythme, pas à VOIR la balle.
@@ -151,7 +153,7 @@ for a, label in enumerate(["rien", "gauche", "droit", "les deux"]):
 # %%
 state = None
 for seed in range(300):
-    env_s = PinballEnv(seed=seed)
+    env_s = PinballEnv(hard_board(), seed=seed)
     obs_s = env_s.reset()
     for _ in range(900):
         obs_s, info_s = env_s.step(0)

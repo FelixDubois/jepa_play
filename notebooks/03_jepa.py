@@ -28,7 +28,7 @@ if IN_COLAB:
     ROOT = Path("/content/drive/MyDrive/jepa_pinball")
 else:
     ROOT = Path(".")
-DATA_DIR, CKPT_DIR = ROOT / "data/v1", ROOT / "checkpoints"
+DATA_DIR, CKPT_DIR = ROOT / "data/hard_v1", ROOT / "checkpoints_hard"
 print("device :", "cuda" if torch.cuda.is_available() else "cpu (lent ! activer le GPU)")
 
 # %%
