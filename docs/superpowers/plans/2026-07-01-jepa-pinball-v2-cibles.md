@@ -1338,6 +1338,10 @@ agent_v1 = MPCPlanner(jepa_v1, heads_v1["danger"], n_candidates=256,
   l'histoire de l'itération 1 (le panneau a démasqué le piégeage).
 - **Avertissement reprise** : mettre à jour les noms de dossiers
   (`data/targets_v2` ET `checkpoints_targets_v2`).
+- **Amendement post-validation (2026-07-02)** : le warm-start calcule désormais
+  `epochs = epoch_du_checkpoint + 6` dynamiquement (un `epochs=16` fixe
+  n'entraînait RIEN en silence quand l'utilisateur avait poussé le notebook 03
+  à 100 epochs — cas réel rencontré) ; l'axvline du graphique suit.
 
 Vérifications : jupytext ; grep : plus aucune occurrence de `hard_v1/hard_v2/
 checkpoints_hard` dans notebooks/ ; suite pytest inchangée.

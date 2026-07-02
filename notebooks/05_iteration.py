@@ -106,7 +106,8 @@ print(f"durée moyenne des épisodes : aléatoire {lengths_v1.mean()/15:.1f} s "
 #
 # Astuce : `train_jepa` reprend automatiquement du checkpoint présent dans son
 # dossier. On copie donc le checkpoint V1 dans un nouveau dossier et on demande
-# 6 epochs de PLUS — il repart de l'epoch 10, sur les données mixtes.
+# 6 epochs de PLUS que l'epoch du checkpoint — quel qu'il soit — sur les
+# données mixtes.
 #
 # ⚠ Pour REFAIRE l'itération de zéro (p. ex. après avoir changé la part
 # d'exploration) : supprimer `data/targets_v2` ET `checkpoints_targets_v2` —
@@ -120,7 +121,12 @@ if not (CKPT_V2 / "jepa.pt").exists():
     shutil.copy(CKPT_V1 / "jepa.pt", CKPT_V2 / "jepa.pt")
 
 episodes_mixed = episodes_v1 + episodes_v2
-jepa_v2, history = train_jepa(episodes_mixed, CKPT_V2, epochs=16)
+# reprise ROBUSTE : +6 epochs quel que soit l'entraînement du checkpoint
+# (un epochs fixe inférieur à l'epoch du checkpoint n'entraînerait RIEN,
+# en silence — p. ex. un notebook 03 poussé à 100 epochs)
+ckpt_epoch = int(torch.load(CKPT_V2 / "jepa.pt", map_location="cpu",
+                            weights_only=True)["epoch"])
+jepa_v2, history = train_jepa(episodes_mixed, CKPT_V2, epochs=ckpt_epoch + 6)
 
 # %%
 import matplotlib.pyplot as plt
@@ -128,7 +134,7 @@ epochs_ = [h["epoch"] for h in history]
 fig, axes = plt.subplots(1, 2, figsize=(10, 3.5))
 axes[0].plot(epochs_, [h["pred_mse"] for h in history], label="prédicteur")
 axes[0].plot(epochs_, [h["copy_mse"] for h in history], "--", label="baseline copie")
-axes[0].axvline(10.5, color="gray", ls=":", label="← v1 | v2 →")
+axes[0].axvline(ckpt_epoch + 0.5, color="gray", ls=":", label="← v1 | v2 →")
 axes[0].legend(); axes[0].set_title("reprise sur données mixtes")
 axes[1].plot(epochs_, [h["latent_std"] for h in history])
 axes[1].axhline(0.05, color="r", ls=":"); axes[1].set_title("variance latente")
