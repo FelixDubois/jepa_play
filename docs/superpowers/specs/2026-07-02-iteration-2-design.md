@@ -159,6 +159,30 @@ bruit de sonde ~0.01, < vraie casse +0.045). Le warm-start (+0.008) est
 donc qualifié ; l'éval n=200 V3 vs V2 du §4.5 reste la seule question
 ouverte. L'assert final ne bloque que si aucun candidat ne tient la marge.
 
+## 6quinquies. RÉSULTAT FINAL — run 3 : la boucle plafonne (2026-07-02 soir)
+
+Éval n=200 seeds appariées : **agent V3 (warm-start epoch 28, qualifié à
++0.008 du champion) 32 % de victoires / 49 % des cibles / 0,0 nudge ;
+champion V2 37 % / 51 % / 0,3 nudge. Gain : −5 pts** — sous le seuil de
++8 pts, et la régression apparente reste elle-même sous 2σ. Verdict :
+**PLATEAU — pas de tag v3, le champion reste V2.**
+
+Têtes V3 en retrait : AUC danger 0.868, cible 0.753, pos 0.113 (champion :
+0.911 / 0.849 / 0.097 — validations différentes, indicatif). Note de
+mesure : V2 relu à 37 % ici vs 40 % au finisher — le MPC échantillonne ses
+candidats (RNG propre), quelques points de variance entre runs sur le même
+modèle.
+
+Conclusion de l'itération 2 : la boucle world-model a rendu l'essentiel au
+1er tour (+11 pts, un modèle qui n'avait jamais vu de bon jeu) ; au 2e tour
+le mélange enrichi ne paie plus — rendements décroissants, comme annoncé au
+§1. Trois leçons de méthode au passage : un seuil absolu calibré sur une
+distribution mesure la distribution (garde-fou devenu relatif) ; la lignée
+du champion ne se reproduit pas from scratch à bas coût (curriculum) ; les
+métriques d'entraînement peuvent toutes « s'améliorer » pendant que le
+latent se dégrade pour le contrôle (raison d'être du diag n°4). Résultat
+publié tel quel.
+
 ## 7. Hors périmètre
 
 - ~~Réentraînement from scratch~~ — écarté au brainstorming comme voie

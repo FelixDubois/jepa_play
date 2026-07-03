@@ -14,6 +14,9 @@
 # - **plateau ou régression** → la leçon attendue des rendements
 #   décroissants, documentée telle quelle.
 #
+# **Verdict (run 3) : PLATEAU — −5 pts, pas de tag v3, le champion reste
+# V2.** Le détail en fin de notebook.
+#
 # Risque propre à ce tour : le champion part de l'epoch 22 et l'érosion de la
 # dynamique rampe déjà (copy_h8 : 0.0128 → 0.0096 au dernier réentraînement).
 # D'où un GARDE-FOU : le diagnostic n°4 (lisibilité de la balle, notebook 03)
@@ -367,3 +370,15 @@ else:
 #   coût : la boucle raffine, elle ne repart pas de zéro.
 # - Dans tous les cas, les nudges restent le détecteur de triche : un agent
 #   qui gagne en nudgeant a trouvé une faille, pas une stratégie.
+#
+# *Vécu (run 3 — VERDICT FINAL)* : agent V3 32 % / 49 % des cibles / 0,0
+# nudge contre champion V2 37 % / 51 % / 0,3 à n=200 seeds appariées →
+# **−5 pts : plateau**. Pas de gain ; la régression apparente reste sous le
+# seuil de signification (< 2σ). Pas de tag v3, le champion reste V2. La
+# boucle a rendu l'essentiel au 1er tour (+11 pts) — au 2e, le mélange
+# enrichi ne paie plus. Notes honnêtes : (1) V2 relu à 37 % ici vs 40 % au
+# finisher — le MPC échantillonne ses candidats avec son propre RNG, la
+# mesure bouge de quelques points entre runs sur le même modèle ; (2) les
+# têtes V3 lisent moins bien (AUC danger 0.868 vs 0.911 — validations
+# différentes, indicatif), cohérent avec le latent à +0.008 et une
+# distribution plus dure.
